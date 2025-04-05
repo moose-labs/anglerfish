@@ -1,11 +1,10 @@
 module red_ocean::pool;
 
-use red_ocean::phase::{PhaseInfo};
+use red_ocean::phase::PhaseInfo;
+use sui::bag::{Self, Bag};
 use sui::balance::Balance;
 use sui::coin::{Coin, into_balance, from_balance};
-use sui::table;
-use sui::table::Table;
-use sui::bag::{Self, Bag};
+use sui::table::{Self, Table};
 use sui::vec_set::{Self, VecSet};
 
 const ErrorUnauthorized: u64 = 1;
@@ -66,7 +65,12 @@ fun init(ctx: &mut TxContext) {
     transfer::transfer(authority_cap, authority);
 }
 
-public fun create_pool<T>(self: &mut PoolFactory, pool_cap: &PoolCap, risk_ratio_bps: u64, ctx: &mut TxContext) {
+public fun create_pool<T>(
+    self: &mut PoolFactory,
+    pool_cap: &PoolCap,
+    risk_ratio_bps: u64,
+    ctx: &mut TxContext,
+) {
     // Avaliable for who hold cap
     assert!(self.creator == object::id(pool_cap), ErrorUnauthorized);
     assert!(risk_ratio_bps <= MAX_RISK_RATIO_BPS, ErrorPoolRiskRatioTooHigh);
@@ -89,7 +93,12 @@ public fun create_pool<T>(self: &mut PoolFactory, pool_cap: &PoolCap, risk_ratio
     bag::add(&mut self.pools, risk_ratio_bps, pool)
 }
 
-public fun deposit<T>(self: &mut Pool<T>, phase_info: &PhaseInfo, deposit_coin: Coin<T>, ctx: &mut TxContext) {
+public fun deposit<T>(
+    self: &mut Pool<T>,
+    phase_info: &PhaseInfo,
+    deposit_coin: Coin<T>,
+    ctx: &mut TxContext,
+) {
     self.assert_deposit_enabled();
     phase_info.assert_liquidity_providing_phase();
 
@@ -99,7 +108,7 @@ public fun deposit<T>(self: &mut Pool<T>, phase_info: &PhaseInfo, deposit_coin: 
     let reserve = self.reserves.value();
     let shares_to_mint = if (reserve == 0) {
         deposit_amount
-    }else{
+    } else {
         deposit_amount / reserve * self.total_shares
     };
 
@@ -111,12 +120,17 @@ public fun deposit<T>(self: &mut Pool<T>, phase_info: &PhaseInfo, deposit_coin: 
     if (table::contains<address, u64>(&self.user_shares, depositor)) {
         let deposited = table::borrow_mut<address, u64>(&mut self.user_shares, depositor);
         *deposited = *deposited + shares_to_mint;
-    }else{
+    } else {
         table::add<address, u64>(&mut self.user_shares, depositor, shares_to_mint);
     }
 }
 
-public fun redeem<T>(self: &mut Pool<T>, phase_info: &PhaseInfo, shares_amount: u64, ctx: &mut TxContext): Coin<T> {
+public fun redeem<T>(
+    self: &mut Pool<T>,
+    phase_info: &PhaseInfo,
+    shares_amount: u64,
+    ctx: &mut TxContext,
+): Coin<T> {
     phase_info.assert_liquidity_providing_phase();
 
     let redeemer = tx_context::sender(ctx);
@@ -136,15 +150,20 @@ public fun redeem<T>(self: &mut Pool<T>, phase_info: &PhaseInfo, shares_amount: 
     redeem_coin
 }
 
-public fun withdraw_to_reserves_prize<T>(self: &mut Pool<T>, phase_info: &PhaseInfo, amount: u64, ctx: &mut TxContext) {
+public fun withdraw_to_reserves_prize<T>(
+    self: &mut Pool<T>,
+    phase_info: &PhaseInfo,
+    amount: u64,
+    ctx: &mut TxContext,
+) {
     assert!(ctx.sender() == self.prize_pool, ErrorUnauthorized);
     phase_info.assert_settling_phase();
-    
+
     let withdraw_coin = from_balance(self.reserves.split(amount), ctx);
     transfer::public_transfer(withdraw_coin, self.prize_pool);
 }
 
-public fun set_deposit_enabled<T>(self: &mut Pool<T>, _pool_cap: &PoolCap , enabled: bool) {
+public fun set_deposit_enabled<T>(self: &mut Pool<T>, _pool_cap: &PoolCap, enabled: bool) {
     self.is_deposit_enabled = enabled;
 }
 
@@ -164,7 +183,10 @@ public fun get_pool_by_risk_ratio<T>(self: &PoolFactory, risk_ratio_bps: u64): &
     bag::borrow(&self.pools, risk_ratio_bps)
 }
 
-public fun get_pool_mut_by_risk_ratio<T>(self: &mut PoolFactory, risk_ratio_bps: u64): &mut Pool<T> {
+public fun get_pool_mut_by_risk_ratio<T>(
+    self: &mut PoolFactory,
+    risk_ratio_bps: u64,
+): &mut Pool<T> {
     bag::borrow_mut(&mut self.pools, risk_ratio_bps)
 }
 
@@ -183,7 +205,7 @@ public fun get_prize_reserves<T>(self: &Pool<T>): u64 {
 public fun get_user_shares<T>(self: &Pool<T>, user: address): u64 {
     if (table::contains<address, u64>(&self.user_shares, user)) {
         *table::borrow<address, u64>(&self.user_shares, user)
-    }else{
+    } else {
         0
     }
 }

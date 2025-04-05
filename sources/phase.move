@@ -12,7 +12,7 @@ const ErrorNotSettlingPhase: u64 = 7;
 const ErrorCurrentPhaseNotCompleted: u64 = 8;
 const ErrorDurationTooShort: u64 = 9;
 
-public enum Phase has store, drop, copy {
+public enum Phase has copy, drop, store {
     /// The system is not yet initialized.
     Uninitialized,
     /// Users can deposit into or withdraw from the liquidity pool.
@@ -25,7 +25,7 @@ public enum Phase has store, drop, copy {
     Settling,
 }
 
-public struct PhaseDurations has store, drop, copy {
+public struct PhaseDurations has copy, drop, store {
     /// The duration of the liquidity providing phase in seconds
     liquidity_providing_duration: u64,
     /// The duration of the ticketing phase in seconds
@@ -75,7 +75,14 @@ fun init(ctx: &mut TxContext) {
     transfer::public_transfer(phase_info_cap, authority);
 }
 
-public fun initialize(self: &mut PhaseInfo, phase_info_cap: &PhaseInfoCap, liquidity_providing_duration: u64, ticketing_duration: u64, settling_duration: u64, _: &mut TxContext) {
+public fun initialize(
+    self: &mut PhaseInfo,
+    phase_info_cap: &PhaseInfoCap,
+    liquidity_providing_duration: u64,
+    ticketing_duration: u64,
+    settling_duration: u64,
+    _: &mut TxContext,
+) {
     assert_authorized(self, phase_info_cap);
 
     // Check if the phase info object is already initialized
@@ -93,13 +100,18 @@ public fun initialize(self: &mut PhaseInfo, phase_info_cap: &PhaseInfoCap, liqui
     self.current_phase = Phase::Settling;
 }
 
-public fun next(self: &mut PhaseInfo, phase_info_cap: &PhaseInfoCap, clock: &Clock, _: &mut TxContext) {
+public fun next(
+    self: &mut PhaseInfo,
+    phase_info_cap: &PhaseInfoCap,
+    clock: &Clock,
+    _: &mut TxContext,
+) {
     assert_authorized(self, phase_info_cap);
     assert_initialized(self);
 
     assert!(self.is_current_phase_completed(clock), ErrorCurrentPhaseNotCompleted);
 
-    self.current_phase = self.inner_next_phase(); 
+    self.current_phase = self.inner_next_phase();
     self.current_phase_at = clock.timestamp_ms();
     self.inner_bump_round();
 }
@@ -139,7 +151,7 @@ public fun estimate_current_phase_completed_at(self: &PhaseInfo): u64 {
     }
 }
 
-/// Internal 
+/// Internal
 
 fun inner_bump_round(self: &mut PhaseInfo) {
     if (self.current_phase == Phase::LiquidityProviding) {
@@ -168,7 +180,6 @@ fun assert_durations(self: &PhaseDurations) {
 fun assert_authorized(self: &PhaseInfo, phase_info_cap: &PhaseInfoCap) {
     assert!(self.authority == object::id(phase_info_cap), ErrorUnauthorized);
 }
-
 
 /// Check the current phase of the liquidity pool
 /// and whether the phase info object is initialized.
