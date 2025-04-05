@@ -177,7 +177,7 @@ fun test_pool_shares() {
         clock.increment_for_testing(PHASE_DURATION);
         phase_info_cap.next(&mut phase_info, &clock, scenario.ctx()); // move to Drawing phase
         phase_info_cap.next(&mut phase_info, &clock, scenario.ctx()); // move to Settling phase
-        pool.withdraw_to_reserves_prize<SUI>(&phase_info, 50, scenario.ctx());
+        pool.redeem_prize<SUI>(&phase_info, 50, scenario.ctx());
 
         assert!(pool.get_reserves().value() == 50);
         assert!(pool.get_total_shares() == 100);
