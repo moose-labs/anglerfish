@@ -38,8 +38,8 @@ public fun build_phase_test_suite(authority: address): (Scenario, Clock, PhaseIn
     // Prepare liquidity providing phase
     let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
     let mut phase_info = scenario.take_shared<PhaseInfo>();
-    phase_info.initialize(
-        &phase_info_cap,
+    phase_info_cap.initialize(
+        &mut phase_info,
         PHASE_DURATION,
         PHASE_DURATION,
         PHASE_DURATION,
@@ -62,7 +62,7 @@ public fun build_pool_test_suite(authority: address): (Scenario, Clock, PhaseInf
     let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
 
     clock.increment_for_testing(PHASE_DURATION);
-    phase_info.next(&phase_info_cap, &clock, scenario.ctx());
+    phase_info_cap.next(&mut phase_info, &clock, scenario.ctx());
     phase_info.assert_liquidity_providing_phase();
 
     scenario.return_to_sender(phase_info_cap);
@@ -99,7 +99,7 @@ public fun build_prize_pool_test_suite(
     // Initilize prize pool
     let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
     let mut prize_pool = scenario.take_shared<PrizePool>();
-    prize_pool.set_pool_factory(&prize_pool_cap, object::id(&pool_factory), scenario.ctx());
+    prize_pool_cap.set_pool_factory(&mut prize_pool, object::id(&pool_factory), scenario.ctx());
 
     scenario.return_to_sender(prize_pool_cap);
 

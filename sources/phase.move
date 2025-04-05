@@ -76,17 +76,17 @@ fun init(ctx: &mut TxContext) {
 }
 
 public fun initialize(
-    self: &mut PhaseInfo,
-    phase_info_cap: &PhaseInfoCap,
+    self: &PhaseInfoCap,
+    phase_info: &mut PhaseInfo,
     liquidity_providing_duration: u64,
     ticketing_duration: u64,
     settling_duration: u64,
     _: &mut TxContext,
 ) {
-    assert_authorized(self, phase_info_cap);
+    assert_authorized(phase_info, self);
 
     // Check if the phase info object is already initialized
-    assert!(self.current_phase == Phase::Uninitialized, ErrorAlreadyInitialized);
+    assert!(phase_info.current_phase == Phase::Uninitialized, ErrorAlreadyInitialized);
 
     let durations = PhaseDurations {
         liquidity_providing_duration,
@@ -94,26 +94,22 @@ public fun initialize(
         settling_duration,
     };
     durations.assert_durations();
-    self.durations = durations;
+    phase_info.durations = durations;
 
     // Set the initial phase to Settling
-    self.current_phase = Phase::Settling;
+    phase_info.current_phase = Phase::Settling;
 }
 
-public fun next(
-    self: &mut PhaseInfo,
-    phase_info_cap: &PhaseInfoCap,
-    clock: &Clock,
-    _: &mut TxContext,
-) {
-    assert_authorized(self, phase_info_cap);
-    assert_initialized(self);
+public fun next(self: &PhaseInfoCap, phase_info: &mut PhaseInfo, clock: &Clock, _: &mut TxContext) {
+    assert_authorized(phase_info, self);
+    assert_initialized(phase_info);
 
-    assert!(self.is_current_phase_completed(clock), ErrorCurrentPhaseNotCompleted);
+    assert!(phase_info.is_current_phase_completed(clock), ErrorCurrentPhaseNotCompleted);
 
-    self.current_phase = self.inner_next_phase();
-    self.current_phase_at = clock.timestamp_ms();
-    self.inner_bump_round();
+    phase_info.current_phase = phase_info.inner_next_phase();
+    phase_info.current_phase_at = clock.timestamp_ms();
+
+    self.inner_bump_round(phase_info);
 }
 
 public fun get_current_phase(self: &PhaseInfo): Phase {
@@ -153,9 +149,9 @@ public fun estimate_current_phase_completed_at(self: &PhaseInfo): u64 {
 
 /// Internal
 
-fun inner_bump_round(self: &mut PhaseInfo) {
-    if (self.current_phase == Phase::LiquidityProviding) {
-        self.current_round = self.current_round + 1;
+fun inner_bump_round(_self: &PhaseInfoCap, phase_info: &mut PhaseInfo) {
+    if (phase_info.current_phase == Phase::LiquidityProviding) {
+        phase_info.current_round = phase_info.current_round + 1;
     }
 }
 

@@ -1,11 +1,31 @@
 #[test_only]
 module red_ocean::prize_pool_test;
 
-use red_ocean::test_suite::build_prize_pool_test_suite;
+use red_ocean::prize_pool::{PrizePool, PrizePoolCap};
+use red_ocean::test_suite::{build_prize_pool_test_suite, build_base_test_suite};
 use sui::sui::SUI;
 use sui::test_scenario;
 
 const AUTHORITY: address = @0xAAA;
+const UNAUTHORIZED: address = @0xFFF;
+
+#[test]
+#[expected_failure(abort_code = test_scenario::EEmptyInventory)]
+fun test_capability_cannot_be_taken_by_unauthorized_user() {
+    let (mut scenario, clock) = build_base_test_suite(
+        AUTHORITY,
+    );
+
+    scenario.next_tx(UNAUTHORIZED);
+    {
+        let pool_cap = scenario.take_from_sender<PrizePoolCap>();
+
+        scenario.return_to_sender(pool_cap)
+    };
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
 
 #[test]
 fun test_get_total_prize_pool() {
@@ -22,9 +42,9 @@ fun test_get_total_prize_pool() {
         assert!(total_prize_pool == 2400000);
     };
 
-    clock.destroy_for_testing();
     test_scenario::return_shared(phase_info);
     test_scenario::return_shared(pool_factory);
     test_scenario::return_shared(prize_pool);
+    clock.destroy_for_testing();
     scenario.end();
 }

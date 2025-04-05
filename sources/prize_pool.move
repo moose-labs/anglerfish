@@ -50,13 +50,13 @@ fun init(ctx: &mut TxContext) {
 }
 
 public fun set_pool_factory(
-    self: &mut PrizePool,
-    prize_pool_cap: &PrizePoolCap,
+    self: &PrizePoolCap,
+    prize_pool: &mut PrizePool,
     pool_factory_id: ID,
     _ctx: &mut TxContext,
 ) {
-    assert!(object::id(prize_pool_cap) == self.authority, ErrorUnauthorized);
-    self.pool_factory = pool_factory_id;
+    assert!(object::id(self) == prize_pool.authority, ErrorUnauthorized);
+    prize_pool.pool_factory = pool_factory_id;
 }
 
 public fun get_total_prize_pool<T>(_self: &PrizePool, pool_factory: &PoolFactory): u64 {
@@ -74,6 +74,14 @@ public fun get_total_prize_pool<T>(_self: &PrizePool, pool_factory: &PoolFactory
 
     total_prize_pool
 }
+
+public fun purchase_ticket(
+    self: &mut PrizePool,
+    pool_factory: &mut PoolFactory,
+    risk_ratio_bps: u64,
+    amount: u64,
+    _ctx: &mut TxContext,
+) {}
 
 #[test_only]
 public fun init_for_testing(ctx: &mut TxContext) {

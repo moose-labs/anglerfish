@@ -45,7 +45,7 @@ fun test_cannot_next_phase_when_not_initialized() {
         let mut phase_info = scenario.take_shared<PhaseInfo>();
         let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
 
-        phase_info.next(&phase_info_cap, &clock, scenario.ctx());
+        phase_info_cap.next(&mut phase_info, &clock, scenario.ctx());
 
         test_scenario::return_shared(phase_info);
         scenario.return_to_sender(phase_info_cap)
@@ -65,7 +65,7 @@ fun test_cannot_initialize_with_zero_durations() {
         let mut phase_info = scenario.take_shared<PhaseInfo>();
         let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
 
-        phase_info.initialize(&phase_info_cap, 0, DURATION, DURATION, scenario.ctx());
+        phase_info_cap.initialize(&mut phase_info, 0, DURATION, DURATION, scenario.ctx());
 
         test_scenario::return_shared(phase_info);
         scenario.return_to_sender(phase_info_cap);
@@ -84,7 +84,7 @@ fun test_initialize_with_durations_and_settled() {
         let mut phase_info = scenario.take_shared<PhaseInfo>();
         let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
 
-        phase_info.initialize(&phase_info_cap, DURATION, DURATION, DURATION, scenario.ctx());
+        phase_info_cap.initialize(&mut phase_info, DURATION, DURATION, DURATION, scenario.ctx());
         phase_info.assert_initialized();
 
         // initialize phase must be Settling
@@ -108,8 +108,8 @@ fun test_cannot_initialize_twice() {
         let mut phase_info = scenario.take_shared<PhaseInfo>();
         let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
 
-        phase_info.initialize(&phase_info_cap, DURATION, DURATION, DURATION, scenario.ctx());
-        phase_info.initialize(&phase_info_cap, DURATION, DURATION, DURATION, scenario.ctx());
+        phase_info_cap.initialize(&mut phase_info, DURATION, DURATION, DURATION, scenario.ctx());
+        phase_info_cap.initialize(&mut phase_info, DURATION, DURATION, DURATION, scenario.ctx());
 
         test_scenario::return_shared(phase_info);
         scenario.return_to_sender(phase_info_cap);
@@ -141,7 +141,7 @@ fun test_cannot_phase_changes() {
         let mut phase_info = scenario.take_shared<PhaseInfo>();
         let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
 
-        phase_info.initialize(&phase_info_cap, DURATION, DURATION, DURATION, scenario.ctx());
+        phase_info_cap.initialize(&mut phase_info, DURATION, DURATION, DURATION, scenario.ctx());
         phase_info.assert_settling_phase();
         assert!(phase_info.get_current_round() == 0);
 
@@ -154,7 +154,7 @@ fun test_cannot_phase_changes() {
         clock.increment_for_testing(DURATION_MS);
 
         // can change phase (Settling -> LiquidityProviding)
-        phase_info.next(&phase_info_cap, &clock, scenario.ctx());
+        phase_info_cap.next(&mut phase_info, &clock, scenario.ctx());
         phase_info.assert_liquidity_providing_phase();
         assert!(phase_info.get_current_round() == 1);
 
@@ -165,7 +165,7 @@ fun test_cannot_phase_changes() {
         clock.increment_for_testing(DURATION_MS);
 
         // can change phase (LiquidityProviding -> Ticketing)
-        phase_info.next(&phase_info_cap, &clock, scenario.ctx());
+        phase_info_cap.next(&mut phase_info, &clock, scenario.ctx());
         phase_info.assert_ticketing_phase();
         assert!(phase_info.get_current_round() == 1);
 
@@ -176,12 +176,12 @@ fun test_cannot_phase_changes() {
         clock.increment_for_testing(DURATION_MS);
 
         // can change phase (Ticketing -> Drawing)
-        phase_info.next(&phase_info_cap, &clock, scenario.ctx());
+        phase_info_cap.next(&mut phase_info, &clock, scenario.ctx());
         phase_info.assert_drawing_phase();
         assert!(phase_info.get_current_round() == 1);
 
         // can instantly change phase on drawed phase (Drawing -> Settling)
-        phase_info.next(&phase_info_cap, &clock, scenario.ctx());
+        phase_info_cap.next(&mut phase_info, &clock, scenario.ctx());
         phase_info.assert_settling_phase();
         assert!(phase_info.get_current_round() == 1);
 
@@ -192,7 +192,7 @@ fun test_cannot_phase_changes() {
         clock.increment_for_testing(DURATION_MS);
 
         // can change phase (Settling -> LiquidityProviding)
-        phase_info.next(&phase_info_cap, &clock, scenario.ctx());
+        phase_info_cap.next(&mut phase_info, &clock, scenario.ctx());
         phase_info.assert_liquidity_providing_phase();
 
         // should increment round at liquidity providing phase
