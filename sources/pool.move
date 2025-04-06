@@ -40,6 +40,8 @@ public struct Pool<phantom T> has key, store {
     total_shares: u64,
     /// Tracking user share objects
     user_shares: Table<address, u64>,
+    /// The total amount of fees in the pool
+    cumulative_fees: u64,
     /// The risk ratio in basis points
     risk_ratio_bps: u64,
     /// This flag is used to enable/disable deposit
@@ -85,6 +87,7 @@ public fun create_pool<T>(
         id: object::new(ctx),
         reserves: sui::balance::zero<T>(),
         total_shares: 0,
+        cumulative_fees: 0,
         risk_ratio_bps,
         user_shares: table::new<address, u64>(ctx),
         is_deposit_enabled: false,
@@ -194,28 +197,34 @@ public fun deposit<T>(
 }
 
 public fun deposit_fee<T>(self: &mut Pool<T>, fee_coin: Coin<T>) {
+    self.cumulative_fees = self.cumulative_fees + fee_coin.value();
     coin::put(&mut self.reserves, fee_coin);
 }
 
 public fun redeem<T>(
     self: &mut Pool<T>,
     phase_info: &PhaseInfo,
-    shares_amount: u64,
+    redeem_shares_amount: u64,
     ctx: &mut TxContext,
 ): Coin<T> {
     phase_info.assert_liquidity_providing_phase();
 
     let redeemer = tx_context::sender(ctx);
-    let user_deposit_amount = *table::borrow<address, u64>(&self.user_shares, redeemer);
+    let user_shares_amount = self.get_user_shares(redeemer);
 
-    assert!(user_deposit_amount > 0, ErrorInsufficientShares);
+    assert!(redeem_shares_amount > 0, ErrorInsufficientShares);
+    assert!(redeem_shares_amount <= user_shares_amount, ErrorTooLargeToRedeem);
 
-    let total_liquidty = self.reserves.value();
+    let total_liquidity = self.reserves.value();
     let total_shares = self.total_shares;
-    let shares_price = total_liquidty / total_shares;
-    let redeem_amount = shares_amount * shares_price;
+    let redeem_amount = redeem_shares_amount * total_liquidity / total_shares;
 
-    assert!(redeem_amount <= user_deposit_amount, ErrorTooLargeToRedeem);
+    // Update user shares
+    let user_shares = self.user_shares.borrow_mut(redeemer);
+    *user_shares = *user_shares - redeem_shares_amount;
+
+    // Update total shares
+    self.total_shares = self.total_shares - redeem_shares_amount;
 
     let redeem_coin = from_balance(self.reserves.split(redeem_amount), ctx);
 
@@ -253,6 +262,10 @@ public fun get_reserves<T>(self: &Pool<T>): &Balance<T> {
 
 public fun get_total_shares<T>(self: &Pool<T>): u64 {
     self.total_shares
+}
+
+public fun get_cumulative_fees<T>(self: &Pool<T>): u64 {
+    self.cumulative_fees
 }
 
 public fun get_risk_ratio_bps<T>(self: &Pool<T>): u64 {
