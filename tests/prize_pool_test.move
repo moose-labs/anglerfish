@@ -1,7 +1,7 @@
 #[test_only]
 module red_ocean::prize_pool_test;
 
-use red_ocean::prize_pool::{PrizePool, PrizePoolCap};
+use red_ocean::prize_pool::PrizePoolCap;
 use red_ocean::test_suite::{build_prize_pool_test_suite, build_base_test_suite};
 use sui::sui::SUI;
 use sui::test_scenario;
@@ -38,7 +38,10 @@ fun test_get_total_prize_pool() {
         // Deposit liquidity into the pools
         // - 1m into 20% pool each (prize = 200_000 per user)
         // - 2m into 50% pool each (prize = 1_000_000 per user)
-        let total_prize_pool = prize_pool.get_total_prize_pool<SUI>(&pool_factory);
+        let total_prize_pool = pool_factory.get_total_prize_reserves_value<SUI>();
+        assert!(total_prize_pool == 2400000);
+
+        let total_prize_pool = prize_pool.get_total_prize_reserves_value<SUI>(&pool_factory);
         assert!(total_prize_pool == 2400000);
     };
 

@@ -14,8 +14,6 @@ const ErrorMaximumNumberOfPlayersReached: u64 = 1;
 const ErrorInvalidPoolFactory: u64 = 2;
 const ErrorPurchaseAmountTooLow: u64 = 3;
 
-const FeeMultiply: u64 = 1000000;
-
 // sell tickets to players
 // - store purchased tickets in prize ticket reserves
 // - store fees in prize fee reserves
@@ -45,7 +43,7 @@ public struct PrizePoolCap has key, store {
     id: UID,
 }
 
-public struct PrizePool has key, store {
+public struct PrizePool has key {
     id: UID,
     /// The pool factory that hold pools
     pool_factory: Option<ID>,
@@ -202,12 +200,12 @@ public fun purchase_ticket<T>(
     let mut purchase_coin = purchase_coin;
 
     // Transfer fee coin to fee reserves
-    let fee_amount = self.inner_get_fee_amount<T>(purchase_value);
+    let fee_amount = self.inner_get_fee_amount(purchase_value);
     let fee_reserves = self.inner_get_fee_reserves_balance_mut<T>();
     coin::put(fee_reserves, purchase_coin.split(fee_amount, ctx));
 
     // Transfer protocol fee coin to protocol fee reserves
-    let protocol_fee_amount = self.inner_get_protocol_fee_amount<T>(purchase_value);
+    let protocol_fee_amount = self.inner_get_protocol_fee_amount(purchase_value);
     let protocol_fee_reserves = self.inner_get_protocol_fee_reserves_balance_mut<T>();
     coin::put(protocol_fee_reserves, purchase_coin.split(protocol_fee_amount, ctx));
 
@@ -361,12 +359,12 @@ fun inner_get_protocol_fee_reserves_balance_mut<T>(self: &mut PrizePool): &mut B
     self.reserves.borrow_mut<vector<u8>, Balance<T>>(b"protocol_fee_reserves")
 }
 
-fun inner_get_fee_amount<T>(self: &PrizePool, purchased_value: u64): u64 {
+fun inner_get_fee_amount(self: &PrizePool, purchased_value: u64): u64 {
     let fee_amount = purchased_value * self.fee_bps / 10000;
     fee_amount
 }
 
-fun inner_get_protocol_fee_amount<T>(self: &PrizePool, purchased_value: u64): u64 {
+fun inner_get_protocol_fee_amount(self: &PrizePool, purchased_value: u64): u64 {
     let protocol_fee_amount = purchased_value * self.protocol_fee_bps / 10000;
     protocol_fee_amount
 }

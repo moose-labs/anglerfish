@@ -71,15 +71,15 @@ public fun build_pool_test_suite(authority: address): (Scenario, Clock, PhaseInf
     let pool_cap = scenario.take_from_sender<PoolCap>();
     let mut pool_factory = scenario.take_shared<PoolFactory>();
 
-    pool_factory.create_pool<SUI>(&pool_cap, TEST_POOL_1_RISK, scenario.ctx());
-    pool_factory.create_pool<SUI>(&pool_cap, TEST_POOL_2_RISK, scenario.ctx());
+    pool_cap.create_pool<SUI>(&mut pool_factory, TEST_POOL_1_RISK, scenario.ctx());
+    pool_cap.create_pool<SUI>(&mut pool_factory, TEST_POOL_2_RISK, scenario.ctx());
 
-    let pool = pool_factory.get_pool_mut_by_risk_ratio<SUI>(TEST_POOL_1_RISK);
-    pool.set_deposit_enabled<SUI>(&pool_cap, true);
+    let pool = pool_factory.get_pool_by_risk_ratio_mut<SUI>(TEST_POOL_1_RISK);
+    pool_cap.set_deposit_enabled<SUI>(pool, true);
     pool.assert_deposit_enabled();
 
-    let pool = pool_factory.get_pool_mut_by_risk_ratio<SUI>(TEST_POOL_2_RISK);
-    pool.set_deposit_enabled<SUI>(&pool_cap, true);
+    let pool = pool_factory.get_pool_by_risk_ratio_mut<SUI>(TEST_POOL_2_RISK);
+    pool_cap.set_deposit_enabled<SUI>(pool, true);
     pool.assert_deposit_enabled();
 
     scenario.return_to_sender(pool_cap);
@@ -111,7 +111,7 @@ public fun build_prize_pool_test_suite(
 
     scenario.next_tx(user1);
     {
-        let pool = pool_factory.get_pool_mut_by_risk_ratio<SUI>(TEST_POOL_1_RISK);
+        let pool = pool_factory.get_pool_by_risk_ratio_mut<SUI>(TEST_POOL_1_RISK);
         let balance = create_balance_for_testing<SUI>(1000000);
         pool.deposit<SUI>(
             &phase_info,
@@ -119,7 +119,7 @@ public fun build_prize_pool_test_suite(
             scenario.ctx(),
         );
 
-        let pool = pool_factory.get_pool_mut_by_risk_ratio<SUI>(TEST_POOL_2_RISK);
+        let pool = pool_factory.get_pool_by_risk_ratio_mut<SUI>(TEST_POOL_2_RISK);
         let balance = create_balance_for_testing<SUI>(2000000);
         pool.deposit<SUI>(
             &phase_info,
@@ -130,7 +130,7 @@ public fun build_prize_pool_test_suite(
 
     scenario.next_tx(user2);
     {
-        let pool = pool_factory.get_pool_mut_by_risk_ratio<SUI>(TEST_POOL_1_RISK);
+        let pool = pool_factory.get_pool_by_risk_ratio_mut<SUI>(TEST_POOL_1_RISK);
         let balance = create_balance_for_testing<SUI>(1000000);
         pool.deposit<SUI>(
             &phase_info,
@@ -138,7 +138,7 @@ public fun build_prize_pool_test_suite(
             scenario.ctx(),
         );
 
-        let pool = pool_factory.get_pool_mut_by_risk_ratio<SUI>(TEST_POOL_2_RISK);
+        let pool = pool_factory.get_pool_by_risk_ratio_mut<SUI>(TEST_POOL_2_RISK);
         let balance = create_balance_for_testing<SUI>(2000000);
         pool.deposit<SUI>(
             &phase_info,

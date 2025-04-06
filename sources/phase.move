@@ -2,15 +2,14 @@ module red_ocean::phase;
 
 use sui::clock::Clock;
 
-const ErrorUnauthorized: u64 = 1;
-const ErrorUninitialized: u64 = 2;
-const ErrorAlreadyInitialized: u64 = 3;
-const ErrorNotLiquidityPhase: u64 = 4;
-const ErrorNotTicketingPhase: u64 = 5;
-const ErrorNotDrawingPhase: u64 = 6;
-const ErrorNotSettlingPhase: u64 = 7;
-const ErrorCurrentPhaseNotCompleted: u64 = 8;
-const ErrorDurationTooShort: u64 = 9;
+const ErrorUninitialized: u64 = 1;
+const ErrorAlreadyInitialized: u64 = 2;
+const ErrorNotLiquidityPhase: u64 = 3;
+const ErrorNotTicketingPhase: u64 = 4;
+const ErrorNotDrawingPhase: u64 = 5;
+const ErrorNotSettlingPhase: u64 = 6;
+const ErrorCurrentPhaseNotCompleted: u64 = 7;
+const ErrorDurationTooShort: u64 = 8;
 
 public enum Phase has copy, drop, store {
     /// The system is not yet initialized.
@@ -48,8 +47,6 @@ public struct PhaseInfo has key {
     current_phase_at: u64,
     /// The durations of each phase in seconds
     durations: PhaseDurations,
-    /// The address of the liquidity phase authority who can trigger the phase change
-    authority: ID,
 }
 
 fun init(ctx: &mut TxContext) {
@@ -69,39 +66,40 @@ fun init(ctx: &mut TxContext) {
             ticketing_duration: 0,
             settling_duration: 0,
         },
-        authority: object::id(&phase_info_cap),
     });
 
-    transfer::public_transfer(phase_info_cap, authority);
+    transfer::transfer(phase_info_cap, authority);
 }
 
 public fun initialize(
-    self: &PhaseInfoCap,
+    _self: &PhaseInfoCap, // Enforce to use by phase info cap capability
     phase_info: &mut PhaseInfo,
     liquidity_providing_duration: u64,
     ticketing_duration: u64,
     settling_duration: u64,
     _: &mut TxContext,
 ) {
-    assert_authorized(phase_info, self);
-
-    // Check if the phase info object is already initialized
     assert!(phase_info.current_phase == Phase::Uninitialized, ErrorAlreadyInitialized);
 
-    let durations = PhaseDurations {
+    let phase_durations = PhaseDurations {
         liquidity_providing_duration,
         ticketing_duration,
         settling_duration,
     };
-    durations.assert_durations();
-    phase_info.durations = durations;
+
+    phase_durations.assert_durations();
+    phase_info.durations = phase_durations;
 
     // Set the initial phase to Settling
     phase_info.current_phase = Phase::Settling;
 }
 
-public fun next(self: &PhaseInfoCap, phase_info: &mut PhaseInfo, clock: &Clock, _: &mut TxContext) {
-    assert_authorized(phase_info, self);
+public fun next(
+    self: &PhaseInfoCap, // Enforce to use by phase info cap capability
+    phase_info: &mut PhaseInfo,
+    clock: &Clock,
+    _: &mut TxContext,
+) {
     assert_initialized(phase_info);
 
     assert!(phase_info.is_current_phase_completed(clock), ErrorCurrentPhaseNotCompleted);
@@ -171,10 +169,6 @@ fun assert_durations(self: &PhaseDurations) {
     assert!(self.liquidity_providing_duration > 0, ErrorDurationTooShort);
     assert!(self.ticketing_duration > 0, ErrorDurationTooShort);
     assert!(self.settling_duration > 0, ErrorDurationTooShort);
-}
-
-fun assert_authorized(self: &PhaseInfo, phase_info_cap: &PhaseInfoCap) {
-    assert!(self.authority == object::id(phase_info_cap), ErrorUnauthorized);
 }
 
 /// Check the current phase of the liquidity pool

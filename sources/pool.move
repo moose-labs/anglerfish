@@ -22,7 +22,7 @@ public struct PoolCap has key, store {
     id: UID,
 }
 
-public struct PoolFactory has key, store {
+public struct PoolFactory has key {
     id: UID,
     /// The list of pool risk ratios that are created
     pool_keys: VecSet<u64>,
@@ -49,7 +49,7 @@ public struct Pool<phantom T> has key, store {
 fun init(ctx: &mut TxContext) {
     let authority = ctx.sender();
 
-    let authority_cap = PoolCap {
+    let pool_cap = PoolCap {
         id: object::new(ctx),
     };
 
@@ -57,10 +57,10 @@ fun init(ctx: &mut TxContext) {
         id: object::new(ctx),
         pool_keys: vec_set::empty<u64>(),
         pools: bag::new(ctx),
-        creator: object::id(&authority_cap),
+        creator: object::id(&pool_cap),
     });
 
-    transfer::transfer(authority_cap, authority);
+    transfer::transfer(pool_cap, authority);
 }
 
 #[test_only]
@@ -177,7 +177,7 @@ public fun deposit<T>(
     let shares_to_mint = if (reserve == 0) {
         deposit_amount
     } else {
-        deposit_amount / reserve * self.total_shares
+        deposit_amount * self.total_shares / reserve
     };
 
     assert!(shares_to_mint > 0, ErrorTooSmallToMint);

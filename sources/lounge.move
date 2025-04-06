@@ -17,7 +17,7 @@ public struct Lounge<phantom T> has key, store {
     recipient: address,
 }
 
-public struct LoungeFactory has key, store {
+public struct LoungeFactory has key {
     id: UID,
     /// Pool authorized creator
     creator: ID,
