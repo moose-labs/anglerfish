@@ -4,6 +4,7 @@ use sui::balance::{Self, Balance};
 use sui::coin::{Self, Coin};
 
 const ErrorUnauthorized: u64 = 0;
+const ErrorRecipientCannotBeZero: u64 = 1;
 
 public struct LoungeCap has key, store {
     id: UID,
@@ -50,6 +51,7 @@ public fun create_lounge<T>(
     ctx: &mut TxContext,
 ): Lounge<T> {
     assert!(object::id(self) == lounge_factory.creator, ErrorUnauthorized);
+    assert!(recipient != @0x0, ErrorRecipientCannotBeZero);
 
     Lounge<T> {
         id: object::new(ctx),

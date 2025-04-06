@@ -14,22 +14,6 @@ const ErrorMaximumNumberOfPlayersReached: u64 = 1;
 const ErrorInvalidPoolFactory: u64 = 2;
 const ErrorPurchaseAmountTooLow: u64 = 3;
 
-// sell tickets to players
-// - store purchased tickets in prize ticket reserves
-// - store fees in prize fee reserves
-// - store protocol fees in protocol fee reserves
-// - store players records
-// drawing the winner
-// - generate a random number
-// - find the winner based on the random number
-// - store the winner address
-//   - player win
-//     - create a lounge (object that hold balance) for the winner
-//     - transfer the prize to the lounge
-//   - lp win
-//     - distribute prize ticket to each pool depend on the risk ratio
-// distribute the prize to the winner
-
 public struct Round has store {
     /// The table of players that contain the address and their purchased tickets
     player_tickets: Table<address, u64>,
@@ -157,6 +141,30 @@ public fun claim_protocol_fee<T>(
     fee_coin
 }
 
+public fun get_pool_factory(self: &PrizePool): Option<ID> {
+    self.pool_factory
+}
+
+public fun get_lounge_factory(self: &PrizePool): Option<ID> {
+    self.lounge_factory
+}
+
+public fun get_max_players(self: &PrizePool): u64 {
+    self.max_players
+}
+
+public fun get_price_per_ticket(self: &PrizePool): u64 {
+    self.price_per_ticket
+}
+
+public fun get_fee_bps(self: &PrizePool): u64 {
+    self.fee_bps
+}
+
+public fun get_protocol_fee_bps(self: &PrizePool): u64 {
+    self.protocol_fee_bps
+}
+
 /// Public functions
 ///
 
@@ -244,6 +252,7 @@ entry fun determine_winner<T>(
 ) {
     phase_info.assert_drawing_phase();
 
+    prize_pool.assert_valid_pool_factory(pool_factory);
     prize_pool.assert_valid_longe_factory(lounge_factory);
 
     let current_round = phase_info.get_current_round();
@@ -275,11 +284,14 @@ entry fun determine_winner<T>(
     } else {
         round.winner = option::none();
 
-        // TODO: transfer all fee back to the pool
+        // distribute ticket reserves to the pools
+        let ticket_reserves = prize_pool.inner_get_ticket_reserves_balance_mut<T>();
+        inner_distribute_fee_to_pools<T>(phase_info, pool_factory, ticket_reserves, ctx);
     };
 
-    // Distribute the fees to the pools
-    prize_pool.inner_distribute_fees<T>(phase_info, pool_factory, ctx);
+    // distribute fees reserves to the pools
+    let fee_reserves = prize_pool.inner_get_fee_reserves_balance_mut<T>();
+    inner_distribute_fee_to_pools<T>(phase_info, pool_factory, fee_reserves, ctx);
 }
 
 /// Internal
@@ -306,18 +318,15 @@ fun inner_aggregate_prize_to_lounge<T>(
     };
 }
 
-fun inner_distribute_fees<T>(
-    self: &mut PrizePool,
+fun inner_distribute_fee_to_pools<T>(
     phase_info: &PhaseInfo,
     pool_factory: &mut PoolFactory,
+    reserves: &mut Balance<T>,
     ctx: &mut TxContext,
 ) {
     phase_info.assert_settling_phase();
 
-    self.assert_valid_pool_factory(pool_factory);
-
-    let total_fee_reserves = self.inner_get_fee_reserves_balance_mut<T>();
-    let total_fee_reserves_value = total_fee_reserves.value();
+    let reserves_value = reserves.value();
 
     let total_risk_ratio_bps = pool_factory.get_total_risk_ratio_bps();
     let risk_ratios = pool_factory.get_pool_risk_ratios().into_keys();
@@ -328,10 +337,10 @@ fun inner_distribute_fees<T>(
         let risk_ratio_bps = risk_ratios[i];
         let fee_for_pool = inner_cal_fee_for_risk_ratio(
             risk_ratio_bps,
-            total_fee_reserves_value,
+            reserves_value,
             total_risk_ratio_bps,
         );
-        let fee_coin = from_balance(total_fee_reserves.split(fee_for_pool), ctx);
+        let fee_coin = from_balance(reserves.split(fee_for_pool), ctx);
         let pool = pool_factory.get_pool_by_risk_ratio_mut<T>(risk_ratio_bps);
         pool.deposit_fee(fee_coin);
         i = i + 1;
@@ -340,10 +349,10 @@ fun inner_distribute_fees<T>(
 
 fun inner_cal_fee_for_risk_ratio(
     risk_ratio_bps: u64,
-    total_fee_reserves_value: u64,
+    total_reserves_value: u64,
     total_risk_ratio_bps: u64,
 ): u64 {
-    let fee_for_pool = risk_ratio_bps * total_fee_reserves_value / total_risk_ratio_bps;
+    let fee_for_pool = risk_ratio_bps * total_reserves_value / total_risk_ratio_bps;
     fee_for_pool
 }
 

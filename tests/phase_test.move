@@ -1,8 +1,8 @@
 #[test_only]
 module red_ocean::phase_test;
 
+use red_ocean::base_test_suite::build_base_test_suite;
 use red_ocean::phase::{Self, PhaseInfo, PhaseInfoCap};
-use red_ocean::test_suite::build_base_test_suite;
 use sui::test_scenario;
 
 const DURATION: u64 = 60;
