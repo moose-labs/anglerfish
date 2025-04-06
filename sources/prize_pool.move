@@ -1,10 +1,11 @@
 module red_ocean::prize_pool;
 
 use red_ocean::lounge::{Lounge, LoungeCap, LoungeFactory};
-use red_ocean::phase::PhaseInfo;
+use red_ocean::phase::{PhaseInfo, PhaseInfoCap};
 use red_ocean::pool::{PoolFactory, PoolCap};
 use sui::bag::{Self, Bag};
-use sui::balance::Balance;
+use sui::balance::{Self, Balance};
+use sui::clock::Clock;
 use sui::coin::{Self, Coin, from_balance};
 use sui::random::{Random, new_generator};
 use sui::table::{Self, Table};
@@ -131,6 +132,16 @@ public fun set_protocol_fee_bps(
     prize_pool.protocol_fee_bps = protocol_fee_bps;
 }
 
+public fun new_round_table_if_needed(
+    _self: &PrizePoolCap,
+    prize_pool: &mut PrizePool,
+    phase_info: &PhaseInfo,
+    ctx: &mut TxContext,
+) {
+    let current_round = phase_info.get_current_round();
+    prize_pool.inner_ensure_round_table_exists(current_round, ctx);
+}
+
 public fun claim_protocol_fee<T>(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
@@ -165,6 +176,16 @@ public fun get_protocol_fee_bps(self: &PrizePool): u64 {
     self.protocol_fee_bps
 }
 
+public fun get_player_tickets(self: &PrizePool, phase_info: &PhaseInfo, player: address): u64 {
+    let current_round = phase_info.get_current_round();
+    let round = self.rounds.borrow(current_round);
+    if (round.players.contains(&player)) {
+        *round.player_tickets.borrow(player)
+    } else {
+        0
+    }
+}
+
 /// Public functions
 ///
 
@@ -197,6 +218,10 @@ public fun purchase_ticket<T>(
 ) {
     phase_info.assert_ticketing_phase();
 
+    // Check if the current round table already exists
+    let current_round = phase_info.get_current_round();
+    self.inner_ensure_round_table_exists(current_round, ctx);
+
     self.assert_max_players(phase_info);
 
     let purchase_value = purchase_coin.value();
@@ -221,11 +246,6 @@ public fun purchase_ticket<T>(
     let ticket_reserves = self.inner_get_ticket_reserves_balance_mut<T>();
     coin::put(ticket_reserves, purchase_coin);
 
-    let current_round = phase_info.get_current_round();
-
-    // Check if the current round table already exists
-    self.inner_ensure_round_table_exists(current_round, ctx);
-
     // Check if the buyer already exists in the current round
     let buyer = tx_context::sender(ctx);
     let round = self.rounds.borrow_mut(current_round);
@@ -239,24 +259,16 @@ public fun purchase_ticket<T>(
     };
 }
 
-entry fun determine_winner<T>(
+entry fun draw(
     _self: &PrizePoolCap, // Enforcing the use of the PrizePoolCap
-    pool_cap: &PoolCap, // Capability to access the prize in the pool
-    lounge_cap: &LoungeCap,
-    phase_info: &PhaseInfo,
+    phase_info_cap: &PhaseInfoCap,
+    phase_info: &mut PhaseInfo,
     prize_pool: &mut PrizePool,
-    pool_factory: &mut PoolFactory,
-    lounge_factory: &mut LoungeFactory,
     rand: &Random,
+    clock: &Clock,
     ctx: &mut TxContext,
 ) {
     phase_info.assert_drawing_phase();
-
-    prize_pool.assert_valid_pool_factory(pool_factory);
-    prize_pool.assert_valid_longe_factory(lounge_factory);
-
-    let current_round = phase_info.get_current_round();
-    prize_pool.inner_ensure_round_table_exists(current_round, ctx);
 
     let number_of_players = prize_pool.get_total_purchased_tickets(phase_info);
     let mut generator = rand.new_generator(ctx);
@@ -264,11 +276,36 @@ entry fun determine_winner<T>(
     let winner_player = prize_pool.inner_find_ticket_winner_address(phase_info, ticket_number);
 
     // Store the winner in the current round
+    let current_round = phase_info.get_current_round();
     let round = prize_pool.rounds.borrow_mut(current_round);
-
     if (winner_player.is_some()) {
         round.winner = winner_player;
+    } else {
+        round.winner = option::none();
+    };
 
+    // Instantly move to the Settling phase
+    phase_info_cap.next(phase_info, clock, ctx);
+}
+
+public fun settle<T>(
+    _self: &PrizePoolCap,
+    pool_cap: &PoolCap,
+    lounge_cap: &LoungeCap,
+    phase_info: &PhaseInfo,
+    prize_pool: &mut PrizePool,
+    pool_factory: &mut PoolFactory,
+    lounge_factory: &mut LoungeFactory,
+    ctx: &mut TxContext,
+) {
+    phase_info.assert_settling_phase();
+    prize_pool.assert_valid_pool_factory(pool_factory);
+    prize_pool.assert_valid_longe_factory(lounge_factory);
+
+    let current_round = phase_info.get_current_round();
+    let round = prize_pool.rounds.borrow_mut(current_round);
+
+    if (round.winner.is_some()) {
         let winner = round.winner.extract();
         let mut lounge = lounge_cap.create_lounge<T>(lounge_factory, winner, ctx);
 
@@ -282,8 +319,6 @@ entry fun determine_winner<T>(
 
         prize_pool.lounges.add(current_round, lounge);
     } else {
-        round.winner = option::none();
-
         // distribute ticket reserves to the pools
         let ticket_reserves = prize_pool.inner_get_ticket_reserves_balance_mut<T>();
         inner_distribute_fee_to_pools<T>(phase_info, pool_factory, ticket_reserves, ctx);
@@ -292,6 +327,9 @@ entry fun determine_winner<T>(
     // distribute fees reserves to the pools
     let fee_reserves = prize_pool.inner_get_fee_reserves_balance_mut<T>();
     inner_distribute_fee_to_pools<T>(phase_info, pool_factory, fee_reserves, ctx);
+
+    // We create round table for the next round
+    prize_pool.inner_ensure_round_table_exists(current_round + 1, ctx);
 }
 
 /// Internal
@@ -357,14 +395,23 @@ fun inner_cal_fee_for_risk_ratio(
 }
 
 fun inner_get_ticket_reserves_balance_mut<T>(self: &mut PrizePool): &mut Balance<T> {
+    if (!self.reserves.contains(b"ticket_reserves")) {
+        self.reserves.add(b"ticket_reserves", balance::zero<T>());
+    };
     self.reserves.borrow_mut<vector<u8>, Balance<T>>(b"ticket_reserves")
 }
 
 fun inner_get_fee_reserves_balance_mut<T>(self: &mut PrizePool): &mut Balance<T> {
+    if (!self.reserves.contains(b"fee_reserves")) {
+        self.reserves.add(b"fee_reserves", balance::zero<T>());
+    };
     self.reserves.borrow_mut<vector<u8>, Balance<T>>(b"fee_reserves")
 }
 
 fun inner_get_protocol_fee_reserves_balance_mut<T>(self: &mut PrizePool): &mut Balance<T> {
+    if (!self.reserves.contains(b"protocol_fee_reserves")) {
+        self.reserves.add(b"protocol_fee_reserves", balance::zero<T>());
+    };
     self.reserves.borrow_mut<vector<u8>, Balance<T>>(b"protocol_fee_reserves")
 }
 
