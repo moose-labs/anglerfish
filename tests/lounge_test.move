@@ -1,7 +1,7 @@
 #[test_only]
 module red_ocean::lounge_pool_test;
 
-use red_ocean::lounge::{Self, LoungeCap, Lounge};
+use red_ocean::lounge::{Self, LoungeCap};
 use red_ocean::lounge_test_suite::build_lounge_test_suite;
 use sui::balance::create_for_testing as create_balance_for_testing;
 use sui::coin::from_balance;
@@ -59,8 +59,7 @@ fun test_cannot_create_lounge_with_0x0_recipient() {
     scenario.next_tx(AUTHORITY);
     {
         let lounge_cap = scenario.take_from_sender<LoungeCap>();
-        let lounge = lounge_cap.create_lounge<SUI>(&mut lounge_factory, @0x0, scenario.ctx());
-        transfer::public_transfer(lounge, @0x0); // destroy lounge
+        let _ = lounge_cap.create_lounge<SUI>(&mut lounge_factory, 0, @0x0, scenario.ctx());
         scenario.return_to_sender(lounge_cap);
     };
 
@@ -86,8 +85,7 @@ fun test_create_lounge_by_capability() {
     scenario.next_tx(AUTHORITY);
     {
         let lounge_cap = scenario.take_from_sender<LoungeCap>();
-        let lounge = lounge_cap.create_lounge<SUI>(&mut lounge_factory, @0x1, scenario.ctx());
-        transfer::public_transfer(lounge, @0x0); // destroy lounge
+        let _ = lounge_cap.create_lounge<SUI>(&mut lounge_factory, 0, @0x1, scenario.ctx());
         scenario.return_to_sender(lounge_cap);
     };
 
@@ -123,20 +121,22 @@ fun test_lounge_cannot_claim_by_unauthorized() {
     scenario.next_tx(AUTHORITY);
     {
         let lounge_cap = scenario.take_from_sender<LoungeCap>();
-        let lounge = lounge_cap.create_lounge<SUI>(&mut lounge_factory, recipient, scenario.ctx());
-        transfer::public_transfer(lounge, unauthorized_recipient); // temporarily transfer lounge to unauthorized recipient (easy to take)
+        let _ = lounge_cap.create_lounge<SUI>(
+            &mut lounge_factory,
+            0,
+            recipient,
+            scenario.ctx(),
+        );
         scenario.return_to_sender(lounge_cap);
     };
 
     scenario.next_tx(unauthorized_recipient);
     {
-        let mut lounge = scenario.take_from_sender<Lounge<SUI>>();
+        let lounge = lounge_factory.get_lounge_number_mut(0);
 
         // Even though the lounge is transferred to unauthorized recipient, it should claimable by the original recipient
         let claimed_coin = lounge.claim<SUI>(scenario.ctx());
         claimed_coin.destroy_for_testing();
-
-        scenario.return_to_sender(lounge);
     };
 
     test_scenario::return_shared(phase_info);
@@ -164,26 +164,28 @@ fun test_lounge_can_claim_by_recipient() {
     scenario.next_tx(AUTHORITY);
     {
         let lounge_cap = scenario.take_from_sender<LoungeCap>();
-        let lounge = lounge_cap.create_lounge<SUI>(&mut lounge_factory, recipient, scenario.ctx());
-        transfer::public_transfer(lounge, recipient); // temporarily transfer lounge to unauthorized claimer (easy to take)
+        let _ = lounge_cap.create_lounge<SUI>(
+            &mut lounge_factory,
+            0,
+            recipient,
+            scenario.ctx(),
+        );
         scenario.return_to_sender(lounge_cap);
     };
 
     scenario.next_tx(recipient);
     {
         let balance = create_balance_for_testing<SUI>(claim_value);
-        let mut lounge = scenario.take_from_sender<Lounge<SUI>>();
+        let lounge = lounge_factory.get_lounge_number_mut(0);
         lounge.add_reserves(from_balance(balance, scenario.ctx()));
-        scenario.return_to_sender(lounge);
     };
 
     scenario.next_tx(recipient);
     {
-        let mut lounge = scenario.take_from_sender<Lounge<SUI>>();
+        let lounge = lounge_factory.get_lounge_number_mut(0);
         let claimed_coin = lounge.claim<SUI>(scenario.ctx());
         assert!(claimed_coin.value() == claim_value);
         claimed_coin.destroy_for_testing();
-        scenario.return_to_sender(lounge);
     };
 
     test_scenario::return_shared(phase_info);

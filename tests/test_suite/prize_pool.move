@@ -14,7 +14,7 @@ use sui::test_scenario::Scenario;
 const PHASE_DURATION: u64 = 60;
 const TEST_POOL_1_RISK: u64 = 2000;
 const TEST_POOL_2_RISK: u64 = 5000;
-const PRIZE_POOL_MAX_PLAYERS: u64 = 1;
+const PRIZE_POOL_MAX_PLAYERS: u64 = 2;
 const PRIZE_POOL_PRICE_PER_TICKET: u64 = 100;
 const PRIZE_POOL_FEE_BPS: u64 = 2500;
 const PRIZE_POOL_PROTOCOL_FEE_BPS: u64 = 500;
@@ -40,6 +40,8 @@ public fun build_prize_pool_test_suite(
     // Deposit liquidity into the pools
     // - 1m into 20% pool each (prize = 200_000 per user)
     // - 2m into 50% pool each (prize = 1_000_000 per user)
+    // Total liquidity is 6_000_000
+    // Total prize is 2_400_000
     let user1: address = @0x001;
     let user2: address = @0x002;
 

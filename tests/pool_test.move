@@ -332,3 +332,38 @@ fun test_pool_deposit_redeem_shares() {
     clock.destroy_for_testing();
     scenario.end();
 }
+
+#[test]
+fun test_get_total_reserves_value() {
+    let (mut scenario, clock, phase_info, mut pool_factory) = build_pool_test_suite(
+        AUTHORITY,
+    );
+
+    scenario.next_tx(USER_1);
+    {
+        let pool = pool_factory.get_pool_by_risk_ratio_mut<SUI>(2000);
+        let balance = create_balance_for_testing<SUI>(200);
+        pool.deposit<SUI>(
+            &phase_info,
+            sui::coin::from_balance(balance, scenario.ctx()),
+            scenario.ctx(),
+        );
+
+        let pool = pool_factory.get_pool_by_risk_ratio_mut<SUI>(5000);
+        let balance = create_balance_for_testing<SUI>(500);
+        pool.deposit<SUI>(
+            &phase_info,
+            sui::coin::from_balance(balance, scenario.ctx()),
+            scenario.ctx(),
+        );
+    };
+
+    {
+        assert!(pool_factory.get_total_reserves_value<SUI>() == 700);
+    };
+
+    test_scenario::return_shared(phase_info);
+    test_scenario::return_shared(pool_factory);
+    clock.destroy_for_testing();
+    scenario.end();
+}

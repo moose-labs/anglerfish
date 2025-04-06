@@ -1,8 +1,9 @@
 module red_ocean::prize_pool;
 
-use red_ocean::lounge::{Lounge, LoungeCap, LoungeFactory};
+use red_ocean::lounge::{LoungeCap, LoungeFactory};
 use red_ocean::phase::{PhaseInfo, PhaseInfoCap};
 use red_ocean::pool::{PoolFactory, PoolCap};
+use red_ocean::ticket_calculator::calculate_total_ticket_with_fees;
 use sui::bag::{Self, Bag};
 use sui::balance::{Self, Balance};
 use sui::clock::Clock;
@@ -14,6 +15,12 @@ use sui::vec_set::{Self, VecSet};
 const ErrorMaximumNumberOfPlayersReached: u64 = 1;
 const ErrorInvalidPoolFactory: u64 = 2;
 const ErrorPurchaseAmountTooLow: u64 = 3;
+const ErrorFeeAmountTooHigh: u64 = 4;
+const ErrorProtocolFeeAmountTooHigh: u64 = 5;
+
+const TICKET_RESERVES_KEY: vector<u8> = b"ticket_reserves";
+const FEE_RESERVES_KEY: vector<u8> = b"fee_reserves";
+const PROTOCOL_FEE_RESERVES_KEY: vector<u8> = b"protocol_fee_reserves";
 
 public struct Round has store {
     /// The table of players that contain the address and their purchased tickets
@@ -46,8 +53,6 @@ public struct PrizePool has key {
     reserves: Bag,
     /// The table of round that contain participant address and their contribution
     rounds: Table<u64, Round>,
-    /// The table of lounges that contain the lounge id and the claimable address
-    lounges: Bag,
     /// An prize pool cap id that can manage the prize pool
     authority: ID,
 }
@@ -69,7 +74,6 @@ fun init(ctx: &mut TxContext) {
         protocol_fee_bps: 500,
         reserves: bag::new(ctx),
         rounds: table::new(ctx),
-        lounges: bag::new(ctx),
         authority: object::id(&authority_cap),
     });
 
@@ -120,6 +124,7 @@ public fun set_fee_bps(
     fee_bps: u64,
     _ctx: &mut TxContext,
 ) {
+    assert!(fee_bps < 6000, ErrorFeeAmountTooHigh);
     prize_pool.fee_bps = fee_bps;
 }
 
@@ -129,6 +134,7 @@ public fun set_protocol_fee_bps(
     protocol_fee_bps: u64,
     _ctx: &mut TxContext,
 ) {
+    assert!(protocol_fee_bps < 3000, ErrorProtocolFeeAmountTooHigh);
     prize_pool.protocol_fee_bps = protocol_fee_bps;
 }
 
@@ -191,6 +197,18 @@ public fun get_player_tickets(self: &PrizePool, phase_info: &PhaseInfo, player: 
 
 public fun get_total_prize_reserves_value<T>(_self: &PrizePool, pool_factory: &PoolFactory): u64 {
     pool_factory.get_total_prize_reserves_value<T>()
+}
+
+public fun get_ticket_reserves_value<T>(self: &PrizePool): u64 {
+    self.inner_get_ticket_reserves_balance_value<T>()
+}
+
+public fun get_fee_reserves_value<T>(self: &PrizePool): u64 {
+    self.inner_get_fee_reserves_balance_value<T>()
+}
+
+public fun get_protocol_fee_reserves_value<T>(self: &PrizePool): u64 {
+    self.inner_get_protocol_fee_reserves_balance_value<T>()
 }
 
 public fun get_total_purchased_tickets(self: &PrizePool, phase_info: &PhaseInfo): u64 {
@@ -259,20 +277,29 @@ public fun purchase_ticket<T>(
     };
 }
 
-entry fun draw(
+entry fun draw<T>(
     _self: &PrizePoolCap, // Enforcing the use of the PrizePoolCap
     phase_info_cap: &PhaseInfoCap,
     phase_info: &mut PhaseInfo,
     prize_pool: &mut PrizePool,
+    pool_factory: &PoolFactory,
     rand: &Random,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     phase_info.assert_drawing_phase();
 
-    let number_of_players = prize_pool.get_total_purchased_tickets(phase_info);
+    let prize_reserves_value = prize_pool.get_total_prize_reserves_value<T>(pool_factory);
+    let lp_tickets = prize_reserves_value / prize_pool.price_per_ticket;
+    let total_fee_bps = prize_pool.fee_bps + prize_pool.protocol_fee_bps;
+    let lp_tickets_with_fee = calculate_total_ticket_with_fees(
+        lp_tickets,
+        total_fee_bps,
+    );
+
     let mut generator = rand.new_generator(ctx);
-    let ticket_number = generator.generate_u64_in_range(1, number_of_players);
+    let ticket_number = generator.generate_u64_in_range(1, lp_tickets_with_fee);
+
     let winner_player = prize_pool.inner_find_ticket_winner_address(phase_info, ticket_number);
 
     // Store the winner in the current round
@@ -307,17 +334,15 @@ public fun settle<T>(
 
     if (round.winner.is_some()) {
         let winner = round.winner.extract();
-        let mut lounge = lounge_cap.create_lounge<T>(lounge_factory, winner, ctx);
-
+        let lounge_number = lounge_cap.create_lounge<T>(lounge_factory, current_round, winner, ctx);
         prize_pool.inner_aggregate_prize_to_lounge<T>(
             phase_info,
             pool_cap,
             pool_factory,
-            &mut lounge,
+            lounge_factory,
+            lounge_number,
             ctx,
         );
-
-        prize_pool.lounges.add(current_round, lounge);
     } else {
         // distribute ticket reserves to the pools
         let ticket_reserves = prize_pool.inner_get_ticket_reserves_balance_mut<T>();
@@ -340,10 +365,13 @@ fun inner_aggregate_prize_to_lounge<T>(
     phase_info: &PhaseInfo,
     pool_cap: &PoolCap,
     pool_factory: &mut PoolFactory,
-    lounge: &mut Lounge<T>,
+    lounge_factory: &mut LoungeFactory,
+    lounge_number: u64,
     ctx: &mut TxContext,
 ) {
     self.assert_valid_pool_factory(pool_factory);
+
+    let lounge = lounge_factory.get_lounge_number_mut<T>(lounge_number);
 
     let risk_ratios = pool_factory.get_pool_risk_ratios().into_keys();
     let risk_ratios_len = risk_ratios.length();
@@ -394,25 +422,49 @@ fun inner_cal_fee_for_risk_ratio(
     fee_for_pool
 }
 
+fun inner_get_ticket_reserves_balance_value<T>(self: &PrizePool): u64 {
+    if (!self.reserves.contains(TICKET_RESERVES_KEY)) {
+        0
+    } else {
+        self.reserves.borrow<vector<u8>, Balance<T>>(TICKET_RESERVES_KEY).value()
+    }
+}
+
 fun inner_get_ticket_reserves_balance_mut<T>(self: &mut PrizePool): &mut Balance<T> {
-    if (!self.reserves.contains(b"ticket_reserves")) {
-        self.reserves.add(b"ticket_reserves", balance::zero<T>());
+    if (!self.reserves.contains(TICKET_RESERVES_KEY)) {
+        self.reserves.add(TICKET_RESERVES_KEY, balance::zero<T>());
     };
-    self.reserves.borrow_mut<vector<u8>, Balance<T>>(b"ticket_reserves")
+    self.reserves.borrow_mut<vector<u8>, Balance<T>>(TICKET_RESERVES_KEY)
+}
+
+fun inner_get_fee_reserves_balance_value<T>(self: &PrizePool): u64 {
+    if (!self.reserves.contains(FEE_RESERVES_KEY)) {
+        0
+    } else {
+        self.reserves.borrow<vector<u8>, Balance<T>>(FEE_RESERVES_KEY).value()
+    }
 }
 
 fun inner_get_fee_reserves_balance_mut<T>(self: &mut PrizePool): &mut Balance<T> {
-    if (!self.reserves.contains(b"fee_reserves")) {
-        self.reserves.add(b"fee_reserves", balance::zero<T>());
+    if (!self.reserves.contains(FEE_RESERVES_KEY)) {
+        self.reserves.add(FEE_RESERVES_KEY, balance::zero<T>());
     };
-    self.reserves.borrow_mut<vector<u8>, Balance<T>>(b"fee_reserves")
+    self.reserves.borrow_mut<vector<u8>, Balance<T>>(FEE_RESERVES_KEY)
+}
+
+fun inner_get_protocol_fee_reserves_balance_value<T>(self: &PrizePool): u64 {
+    if (!self.reserves.contains(PROTOCOL_FEE_RESERVES_KEY)) {
+        0
+    } else {
+        self.reserves.borrow<vector<u8>, Balance<T>>(PROTOCOL_FEE_RESERVES_KEY).value()
+    }
 }
 
 fun inner_get_protocol_fee_reserves_balance_mut<T>(self: &mut PrizePool): &mut Balance<T> {
-    if (!self.reserves.contains(b"protocol_fee_reserves")) {
-        self.reserves.add(b"protocol_fee_reserves", balance::zero<T>());
+    if (!self.reserves.contains(PROTOCOL_FEE_RESERVES_KEY)) {
+        self.reserves.add(PROTOCOL_FEE_RESERVES_KEY, balance::zero<T>());
     };
-    self.reserves.borrow_mut<vector<u8>, Balance<T>>(b"protocol_fee_reserves")
+    self.reserves.borrow_mut<vector<u8>, Balance<T>>(PROTOCOL_FEE_RESERVES_KEY)
 }
 
 fun inner_get_fee_amount(self: &PrizePool, purchased_value: u64): u64 {

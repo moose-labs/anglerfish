@@ -99,6 +99,22 @@ public fun create_pool<T>(
 }
 
 /// Pool Factory implementation
+///
+
+public fun get_total_reserves_value<T>(self: &PoolFactory): u64 {
+    let (pool_risk_ratios, len) = self.inner_get_pool_risk_ratios_with_len();
+
+    let mut i = 0;
+    let mut total_reserves_value = 0;
+    while (i < len) {
+        let risk_ratio_bps = pool_risk_ratios[i];
+        let pool = self.get_pool_by_risk_ratio<T>(risk_ratio_bps);
+        total_reserves_value = total_reserves_value + pool.get_reserves().value();
+        i = i + 1;
+    };
+
+    total_reserves_value
+}
 
 public fun get_total_prize_reserves_value<T>(self: &PoolFactory): u64 {
     let (pool_risk_ratios, len) = self.inner_get_pool_risk_ratios_with_len();
