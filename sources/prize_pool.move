@@ -379,7 +379,8 @@ fun inner_aggregate_prize_to_lounge<T>(
     let mut i = 0;
     while (i < risk_ratios_len) {
         let risk_ratio_bps = risk_ratios[i];
-        pool_cap.withdraw_prize<T>(pool_factory, phase_info, lounge, risk_ratio_bps, ctx);
+        let pool = pool_factory.get_pool_by_risk_ratio_mut<T>(risk_ratio_bps);
+        pool_cap.withdraw_prize<T>(pool, phase_info, lounge, ctx);
         i = i + 1;
     };
 }

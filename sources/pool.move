@@ -12,9 +12,10 @@ const ErrorUnauthorized: u64 = 1;
 const ErrorTooSmallToMint: u64 = 2;
 const ErrorTooLargeToRedeem: u64 = 3;
 const ErrorInsufficientShares: u64 = 4;
-const ErrorPoolRiskRatioTooHigh: u64 = 5;
-const ErrorPoolDepositDisabled: u64 = 6;
-const ErrorPoolAlreadyCreated: u64 = 7;
+const ErrorInsufficientReserves: u64 = 5;
+const ErrorPoolRiskRatioTooHigh: u64 = 6;
+const ErrorPoolDepositDisabled: u64 = 7;
+const ErrorPoolAlreadyCreated: u64 = 8;
 
 const MAX_RISK_RATIO_BPS: u64 = 10000;
 
@@ -36,6 +37,8 @@ public struct Pool<phantom T> has key, store {
     id: UID,
     /// The total liquidity in the pool
     reserves: Balance<T>,
+    /// The total value of the reserves in the pool
+    total_reserves_value: u64,
     /// The total shares in the pool
     total_shares: u64,
     /// Tracking user share objects
@@ -86,6 +89,7 @@ public fun create_pool<T>(
     let pool = Pool<T> {
         id: object::new(ctx),
         reserves: sui::balance::zero<T>(),
+        total_reserves_value: 0,
         total_shares: 0,
         cumulative_fees: 0,
         risk_ratio_bps,
@@ -202,7 +206,8 @@ public fun deposit<T>(
     assert!(shares_to_mint > 0, ErrorTooSmallToMint);
 
     self.total_shares = self.total_shares + shares_to_mint;
-    coin::put(&mut self.reserves, deposit_coin);
+
+    self.inner_put_reserves_balance(deposit_coin);
 
     if (table::contains<address, u64>(&self.user_shares, depositor)) {
         let deposited = table::borrow_mut<address, u64>(&mut self.user_shares, depositor);
@@ -214,7 +219,7 @@ public fun deposit<T>(
 
 public fun deposit_fee<T>(self: &mut Pool<T>, fee_coin: Coin<T>) {
     self.cumulative_fees = self.cumulative_fees + fee_coin.value();
-    coin::put(&mut self.reserves, fee_coin);
+    self.inner_put_reserves_balance(fee_coin);
 }
 
 public fun redeem<T>(
@@ -233,7 +238,7 @@ public fun redeem<T>(
 
     let total_liquidity = self.reserves.value();
     let total_shares = self.total_shares;
-    let redeem_amount = redeem_shares_amount * total_liquidity / total_shares;
+    let redeem_value = redeem_shares_amount * total_liquidity / total_shares;
 
     // Update user shares
     let user_shares = self.user_shares.borrow_mut(redeemer);
@@ -242,24 +247,20 @@ public fun redeem<T>(
     // Update total shares
     self.total_shares = self.total_shares - redeem_shares_amount;
 
-    let redeem_coin = from_balance(self.reserves.split(redeem_amount), ctx);
-
-    redeem_coin
+    self.inner_take_reserves_balance(redeem_value, ctx)
 }
 
 public fun withdraw_prize<T>(
     _self: &PoolCap, // Enforce to use by pool cap capability
-    pool_factory: &mut PoolFactory,
+    pool: &mut Pool<T>,
     phase_info: &PhaseInfo,
     lounge: &mut Lounge<T>,
-    risk_ratio_bps: u64,
     ctx: &mut TxContext,
 ) {
     phase_info.assert_settling_phase();
 
-    let pool = pool_factory.get_pool_by_risk_ratio_mut<T>(risk_ratio_bps);
     let prize_reserves_amount = pool.get_prize_reserves_value();
-    let prize_coin = from_balance(pool.reserves.split(prize_reserves_amount), ctx);
+    let prize_coin = pool.inner_take_reserves_balance(prize_reserves_amount, ctx);
 
     lounge.add_reserves(prize_coin);
 }
@@ -289,7 +290,7 @@ public fun get_risk_ratio_bps<T>(self: &Pool<T>): u64 {
 }
 
 public fun get_prize_reserves_value<T>(self: &Pool<T>): u64 {
-    self.risk_ratio_bps * self.reserves.value() / MAX_RISK_RATIO_BPS
+    self.risk_ratio_bps * self.total_reserves_value / MAX_RISK_RATIO_BPS
 }
 
 public fun get_user_shares<T>(self: &Pool<T>, user: address): u64 {
@@ -298,6 +299,20 @@ public fun get_user_shares<T>(self: &Pool<T>, user: address): u64 {
     } else {
         0
     }
+}
+
+/// Inner functions
+
+fun inner_put_reserves_balance<T>(self: &mut Pool<T>, coin: Coin<T>) {
+    self.total_reserves_value = self.total_reserves_value + coin.value();
+    coin::put(&mut self.reserves, coin);
+}
+
+fun inner_take_reserves_balance<T>(self: &mut Pool<T>, amount: u64, ctx: &mut TxContext): Coin<T> {
+    assert!(amount <= self.reserves.value(), ErrorInsufficientReserves);
+    self.total_reserves_value = self.total_reserves_value - amount;
+    let coin = from_balance(self.reserves.split(amount), ctx);
+    coin
 }
 
 /// Assertions
