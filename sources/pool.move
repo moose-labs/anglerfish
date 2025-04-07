@@ -8,14 +8,13 @@ use sui::coin::{Self, Coin, from_balance};
 use sui::table::{Self, Table};
 use sui::vec_set::{Self, VecSet};
 
-const ErrorUnauthorized: u64 = 1;
-const ErrorTooSmallToMint: u64 = 2;
-const ErrorTooLargeToRedeem: u64 = 3;
-const ErrorInsufficientShares: u64 = 4;
-const ErrorInsufficientReserves: u64 = 5;
-const ErrorPoolRiskRatioTooHigh: u64 = 6;
-const ErrorPoolDepositDisabled: u64 = 7;
-const ErrorPoolAlreadyCreated: u64 = 8;
+const ErrorTooSmallToMint: u64 = 1;
+const ErrorTooLargeToRedeem: u64 = 2;
+const ErrorInsufficientShares: u64 = 3;
+const ErrorInsufficientReserves: u64 = 4;
+const ErrorPoolRiskRatioTooHigh: u64 = 5;
+const ErrorPoolDepositDisabled: u64 = 6;
+const ErrorPoolAlreadyCreated: u64 = 7;
 
 const MAX_RISK_RATIO_BPS: u64 = 10000;
 
@@ -74,16 +73,12 @@ public fun init_for_testing(ctx: &mut TxContext) {
 }
 
 public fun create_pool<T>(
-    self: &PoolCap, // Enforce to use by pool cap capability
+    _self: &PoolCap, // Enforce to use by pool cap capability
     pool_factory: &mut PoolFactory,
     risk_ratio_bps: u64,
     ctx: &mut TxContext,
 ) {
-    // Avaliable for who hold cap
-    assert!(pool_factory.creator == object::id(self), ErrorUnauthorized);
     assert!(risk_ratio_bps <= MAX_RISK_RATIO_BPS, ErrorPoolRiskRatioTooHigh);
-
-    // Check if pool already created
     assert!(pool_factory.pool_keys.contains(&risk_ratio_bps) == false, ErrorPoolAlreadyCreated);
 
     let pool = Pool<T> {
