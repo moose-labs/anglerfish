@@ -1,49 +1,48 @@
 module red_ocean::lending;
 
-use red_ocean::suilend_adapter::get_suilend_ctoken_position_value;
+use red_ocean::phase::PhaseInfo;
+use red_ocean::suilend_adapter::get_suilend_lending_token_value as inner_get_suilend_lending_token_value;
 use sui::bag::{Self, Bag};
 use sui::balance::{Self, Balance};
-use sui::coin::{Coin, from_balance, into_balance};
+use sui::clock::Clock;
+use sui::coin::{Coin, into_balance};
 use sui::table::{Self, Table};
 use suilend::lending_market::LendingMarket;
+use suilend::reserve::CToken;
 
-const ErrorLendingPoolNotFound: u64 = 1;
-const ErrorAllocationCannotBeLoss: u64 = 2;
+const ErrorPoolAlreadyRegistered: u64 = 2;
+const ErrorPoolNotRegistered: u64 = 3;
+const ErrorInvalidWeights: u64 = 4;
 
 public struct LendingCap has key, store {
     id: UID,
 }
 
-public struct AllocatorCap has key, store {
+public struct AllocationCap has key, store {
     id: UID,
 }
 
-public struct LendingFactory has key {
-    id: UID,
-    /// The bag of red-ocean lending pools mapping to the underlying token
-    pools: Bag,
+public struct LendingWeightBps has copy, drop, store {
+    scallop: u64,
+    suilend: u64,
 }
 
-public struct Lending<phantom T> has key, store {
+public struct Lending has key {
     id: UID,
-    /// The total amount of assets in the lending pool
-    reserves: Balance<T>,
-    /// The bag of lending tokens
-    lending_token_reserves: Bag,
-    /// Mapping pool id to shares amount
+    /// The reserves bag
+    reserves: Bag,
+    /// Mapping pool id with shares amount
     pool_shares: Table<ID, u64>,
     /// Total shares on every pool
     total_shares: u64,
+    /// Lending weights
+    weights: LendingWeightBps,
 }
 
-/// An allocating position
-/// This is a hot potato struct, it enforces the allocator
-/// to fill the amount lend before end of the PTB.
-public struct Allocating {
-    before_allocation: u64,
-}
+public struct ReservesTokenType<phantom T> has copy, drop, store {}
 
-public struct LendingPoolKey<phantom T> has copy, drop, store {}
+public struct UnderlyingTokenReservesKey has copy, drop, store {}
+public struct SuilendLendingTokenReservesKey has copy, drop, store {}
 
 fun init(ctx: &mut TxContext) {
     let authority = ctx.sender();
@@ -52,100 +51,189 @@ fun init(ctx: &mut TxContext) {
         id: object::new(ctx),
     };
 
-    transfer::share_object(LendingFactory {
+    transfer::share_object(Lending {
         id: object::new(ctx),
-        pools: bag::new(ctx),
+        reserves: bag::new(ctx),
+        pool_shares: table::new(ctx),
+        total_shares: 0,
+        weights: LendingWeightBps {
+            scallop: 5000,
+            suilend: 5000,
+        },
     });
 
     transfer::public_transfer(lending_cap, authority);
 }
 
-public fun create_lending_pool<T>(
-    _self: &LendingCap, // Enforce to use by lending capability
-    lending_factory: &mut LendingFactory,
-    key: LendingPoolKey<T>,
-    ctx: &mut TxContext,
+#[test_only]
+public fun init_for_testing(ctx: &mut TxContext) {
+    init(ctx);
+}
+
+public fun new_allocation_cap(_self: &LendingCap, allocator: address, ctx: &mut TxContext) {
+    let allocation_cap = AllocationCap {
+        id: object::new(ctx),
+    };
+    transfer::public_transfer(allocation_cap, allocator)
+}
+
+public fun register_pool(
+    _self: &LendingCap,
+    lending: &mut Lending,
+    pool_id: ID,
+    _ctx: &mut TxContext,
 ) {
-    let pool = Lending {
-        id: object::new(ctx),
-        reserves: balance::zero<T>(),
-        lending_token_reserves: bag::new(ctx),
-        pool_shares: table::new(ctx),
-        total_shares: 0,
-    };
+    assert!(lending.pool_shares.contains(pool_id) == false, ErrorPoolAlreadyRegistered);
 
-    lending_factory.pools.add(key, pool);
+    lending.pool_shares.add(pool_id, 0);
 }
 
-public fun new_allocator_cap(_self: &LendingCap, authorized: address, ctx: &mut TxContext) {
-    let allocator_cap = AllocatorCap {
-        id: object::new(ctx),
-    };
-    transfer::public_transfer(allocator_cap, authorized)
+public fun update_weights(
+    _self: &LendingCap,
+    lending: &mut Lending,
+    weights: LendingWeightBps,
+    _ctx: &mut TxContext,
+) {
+    assert_weights_valid(weights);
+
+    lending.weights = weights;
 }
 
-public fun suilend_begin<P, T>(
-    _self: &AllocatorCap,
-    lending_factory: &mut LendingFactory,
-    key: LendingPoolKey<T>,
-    lending_market: &LendingMarket<P>,
-    ctx: &mut TxContext,
-): (Coin<T>, Coin<P>, Allocating) {
-    assert!(lending_factory.pools.contains(key), ErrorLendingPoolNotFound);
+public fun assert_weights_valid(self: LendingWeightBps) {
+    assert!(self.scallop + self.suilend == 10000, ErrorInvalidWeights);
+}
 
-    let lending_pool = lending_factory.pools.borrow_mut<LendingPoolKey<T>, Lending<T>>(key);
+// Public views
 
-    let lending_token_reserves = lending_pool
-        .lending_token_reserves
-        .borrow_mut<LendingPoolKey<T>, Balance<P>>(key);
-    let lending_token_balance = lending_token_reserves.withdraw_all();
-    let lending_token_coin = from_balance(lending_token_balance, ctx);
-    let lending_token_value = get_suilend_ctoken_position_value<P, T>(
-        lending_market,
-        lending_token_coin.value(),
+public fun get_total_reserves_value<U, SUILEND_SHARES_TOKEN>(
+    lending: &Lending,
+    suilend_lending_market: &LendingMarket<SUILEND_SHARES_TOKEN>,
+): u64 {
+    let underlying_reserves_balance = lending
+        .reserves
+        .borrow<ReservesTokenType<UnderlyingTokenReservesKey>, Balance<U>>(ReservesTokenType<
+            UnderlyingTokenReservesKey,
+        > {});
+    let underlying_reserves_value = underlying_reserves_balance.value();
+
+    let suilend_reserves_value = lending.get_suilend_lending_token_value<SUILEND_SHARES_TOKEN, U>(
+        suilend_lending_market,
     );
 
-    let underlying_token_balance = lending_pool.reserves.withdraw_all();
-    let underlying_token_coin = from_balance(underlying_token_balance, ctx);
-    let underlying_token_value = underlying_token_coin.value();
+    underlying_reserves_value + suilend_reserves_value
+}
 
-    (
-        underlying_token_coin,
-        lending_token_coin,
-        Allocating {
-            before_allocation: lending_token_value + underlying_token_value,
-        },
+// Public mutable
+
+public fun add_reserves<U, SUILEND_SHARES_TOKEN>(
+    self: &mut Lending,
+    phase_info: &PhaseInfo,
+    suilend_lending_market: &mut LendingMarket<SUILEND_SHARES_TOKEN>,
+    pool_id: ID,
+    clock: &Clock,
+    deposit_coin: Coin<U>,
+    ctx: &mut TxContext,
+) {
+    assert!(self.pool_shares.contains(pool_id), ErrorPoolNotRegistered);
+
+    phase_info.assert_liquidity_providing_phase();
+
+    let deposit_value = deposit_coin.value();
+
+    let reserves_token_type = ReservesTokenType<UnderlyingTokenReservesKey> {};
+    self.inner_ensure_reserves_type_exists(reserves_token_type);
+
+    // Routing to lending markets
+    self.inner_route_deposited_coin(suilend_lending_market, deposit_coin, clock, ctx);
+
+    // create shares for the pool
+    let total_reserves_value = get_total_reserves_value<U, SUILEND_SHARES_TOKEN>(
+        self,
+        suilend_lending_market,
+    );
+    let total_shares = self.total_shares;
+    let shares_to_mint = inner_calculate_shares_to_mint(
+        total_reserves_value,
+        deposit_value,
+        total_shares,
+    );
+    if (self.pool_shares.contains(pool_id)) {
+        let pool_shares = self.pool_shares.borrow_mut<ID, u64>(pool_id);
+        *pool_shares = *pool_shares + shares_to_mint;
+    } else {
+        self.pool_shares.add(pool_id, shares_to_mint);
+    };
+}
+
+// Inner
+
+fun inner_route_deposited_coin<U, SUILEND_SHARES_TOKEN>(
+    self: &mut Lending,
+    suilend_lending_market: &mut LendingMarket<SUILEND_SHARES_TOKEN>,
+    coin: Coin<U>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    // let lending_weights = self.weights;
+    // let suilend_lending_token_value = self.get_suilend_lending_token_value<SUILEND_SHARES_TOKEN, U>(
+    //     suilend_lending_market,
+    // );
+
+    // TODO: add scallop logic
+    {
+        let suilend_usdc_market_index = 7; // TODO: load from config + ability to recovery fund from deprecated markets
+        let suilend_ctoken_coin = suilend_lending_market.deposit_liquidity_and_mint_ctokens<
+            SUILEND_SHARES_TOKEN,
+            U,
+        >(
+            suilend_usdc_market_index,
+            clock,
+            coin,
+            ctx,
+        );
+
+        let suilend_ctoken_reserves_balance = self
+            .reserves
+            .borrow_mut<
+                ReservesTokenType<SuilendLendingTokenReservesKey>,
+                Balance<CToken<SUILEND_SHARES_TOKEN, U>>,
+            >(ReservesTokenType<SuilendLendingTokenReservesKey> {});
+        suilend_ctoken_reserves_balance.join(into_balance(suilend_ctoken_coin));
+    };
+}
+
+fun inner_ensure_reserves_type_exists<K>(
+    lending: &mut Lending,
+    reserves_token_type: ReservesTokenType<K>,
+) {
+    if (lending.reserves.contains(reserves_token_type) == false) {
+        lending.reserves.add(reserves_token_type, balance::zero<K>());
+    }
+}
+
+fun inner_calculate_shares_to_mint(reserves: u64, deposit_amount: u64, total_shares: u64): u64 {
+    let shares_to_mint = if (reserves == 0) {
+        deposit_amount
+    } else {
+        deposit_amount * total_shares / reserves
+    };
+    shares_to_mint
+}
+
+// Suilend implementation
+
+public fun get_suilend_lending_token_value<SUILEND_SHARES_TOKEN, U>(
+    lending: &Lending,
+    lending_market: &LendingMarket<SUILEND_SHARES_TOKEN>,
+): u64 {
+    let suilend_ctoken_reserves_balance = lending
+        .reserves
+        .borrow<
+            ReservesTokenType<SuilendLendingTokenReservesKey>,
+            Balance<CToken<SUILEND_SHARES_TOKEN, U>>,
+        >(ReservesTokenType<SuilendLendingTokenReservesKey> {});
+    inner_get_suilend_lending_token_value<SUILEND_SHARES_TOKEN, U>(
+        lending_market,
+        suilend_ctoken_reserves_balance.value(),
     )
-}
-
-public fun end_suilend<P, T>(
-    _self: &AllocatorCap,
-    allocate: Allocating,
-    lending_factory: &mut LendingFactory,
-    key: LendingPoolKey<T>,
-    lending_market: &LendingMarket<P>,
-    underlying_coin: Coin<T>,
-    lending_token_coin: Coin<P>,
-) {
-    let Allocating { before_allocation } = allocate;
-
-    let underlying_token_value = underlying_coin.value();
-
-    let lending_token_value = get_suilend_ctoken_position_value<P, T>(
-        lending_market,
-        lending_token_coin.value(),
-    );
-
-    let total_underlying_value = underlying_token_value + lending_token_value;
-
-    assert!(total_underlying_value >= before_allocation, ErrorAllocationCannotBeLoss);
-
-    let lending_pool = lending_factory.pools.borrow_mut<LendingPoolKey<T>, Lending<T>>(key);
-
-    lending_pool.reserves.join(into_balance(underlying_coin));
-
-    let lending_token_reserves = lending_pool
-        .lending_token_reserves
-        .borrow_mut<LendingPoolKey<T>, Balance<P>>(key);
-    lending_token_reserves.join(into_balance(lending_token_coin));
 }

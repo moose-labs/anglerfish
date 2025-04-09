@@ -1,6 +1,7 @@
 #[test_only]
 module red_ocean::base_test_suite;
 
+use red_ocean::lending::init_for_testing as init_lending_for_testing;
 use red_ocean::lounge::init_for_testing as init_lounge_for_testing;
 use red_ocean::phase::init_for_testing as init_phase_info_for_testing;
 use red_ocean::pool::init_for_testing as init_pool_for_testing;
@@ -26,6 +27,7 @@ public fun build_base_test_suite(authority: address): (Scenario, Clock) {
         init_pool_for_testing(scenario.ctx());
         init_lounge_for_testing(scenario.ctx());
         init_prize_for_testing(scenario.ctx());
+        init_lending_for_testing(scenario.ctx());
     };
 
     (scenario, clock)

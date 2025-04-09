@@ -2,17 +2,16 @@
 name = "red_ocean"
 edition = "2024.beta"
 
-[dependencies.Sui]
-git = "https://github.com/MystenLabs/sui.git"
-subdir = "crates/sui-framework/packages/sui-framework"
-rev = "framework/mainnet"
-override = true
+# [dependencies.Sui]
+# git = "https://github.com/MystenLabs/sui.git"
+# subdir = "crates/sui-framework/packages/sui-framework"
+# rev = "framework/mainnet"
+# override = true
 
 [dependencies.suilend]
 git = "https://github.com/pawsengineer/suilend.git"
 subdir = "contracts/suilend"
 rev = "mainnet"
-override = true
 
 [addresses]
 red_ocean = "0x0"
