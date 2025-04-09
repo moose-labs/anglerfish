@@ -7,6 +7,7 @@ use sui::balance::{Self, create_for_testing as create_balance_for_testing};
 use sui::coin;
 use sui::sui::SUI;
 use sui::test_scenario;
+use sui::test_utils;
 use suilend::lending_market_tests::LENDING_MARKET;
 
 const AUTHORITY: address = @0xAAA;
@@ -26,19 +27,19 @@ fun test_simple() {
         let pool_risk_2000 = pool_factory.get_pool_by_risk_ratio_mut<SUI>(2000);
         let pool_id = object::id(pool_risk_2000);
 
-        lending.add_reserves<SUI, LENDING_MARKET>(
+        lending.add_liquidity<SUI, LENDING_MARKET>(
             &phase_info,
             &mut suilend_lending_market,
             pool_id,
             &clock,
-            coin::take<SUI>(&mut user_balance, 1, scenario.ctx()),
+            coin::take<SUI>(&mut user_balance, 100, scenario.ctx()),
             scenario.ctx(),
         );
 
         balance::destroy_for_testing(user_balance);
     };
 
-    test_scenario::return_shared(suilend_lending_market);
+    test_utils::destroy(suilend_lending_market);
     test_scenario::return_shared(phase_info);
     test_scenario::return_shared(lending);
     test_scenario::return_shared(pool_factory);
