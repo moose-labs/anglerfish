@@ -192,7 +192,7 @@ public fun get_player_tickets(self: &PrizePool, phase_info: &PhaseInfo, player: 
     }
 }
 
-/// Public functions
+/// Public views & functions
 ///
 
 public fun get_total_prize_reserves_value<T>(_self: &PrizePool, pool_factory: &PoolFactory): u64 {

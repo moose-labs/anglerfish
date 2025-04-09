@@ -25,7 +25,6 @@ public struct AllocationCap has key, store {
 }
 
 public struct LendingWeightBps has copy, drop, store {
-    scallop: u64,
     suilend: u64,
 }
 
@@ -59,8 +58,7 @@ fun init(ctx: &mut TxContext) {
         pool_shares: table::new(ctx),
         total_shares: 0,
         weights: LendingWeightBps {
-            scallop: 5000,
-            suilend: 5000,
+            suilend: 10000,
         },
     });
 
@@ -90,19 +88,14 @@ public fun register_pool(
     lending.pool_shares.add(pool_id, 0);
 }
 
-public fun update_weights(
+public fun update_suilend_weights(
     _self: &LendingCap,
     lending: &mut Lending,
-    weights: LendingWeightBps,
+    weight: u64,
     _ctx: &mut TxContext,
 ) {
-    assert_weights_valid(weights);
-
-    lending.weights = weights;
-}
-
-public fun assert_weights_valid(self: LendingWeightBps) {
-    assert!(self.scallop + self.suilend == 10000, ErrorInvalidWeights);
+    lending.weights.suilend = weight;
+    lending.weights.assert_weights_valid();
 }
 
 // Public views
@@ -136,7 +129,7 @@ public(package) fun add_liquidity<U, SUILEND_SHARES_TOKEN>(
     deposit_underlying_coin: Coin<U>,
     ctx: &mut TxContext,
 ) {
-    assert!(self.pool_shares.contains(pool_id), ErrorPoolNotRegistered);
+    self.assert_pool_registered(pool_id);
 
     phase_info.assert_liquidity_providing_phase();
 
@@ -147,10 +140,10 @@ public(package) fun add_liquidity<U, SUILEND_SHARES_TOKEN>(
         reserves_token_type,
     );
 
-    // Routing to lending markets
+    // Route to lending markets
     self.inner_route_depositing(suilend_lending_market, deposit_underlying_coin, clock, ctx);
 
-    // create shares for the pool
+    // Update shares for the pool
     let total_reserves_value = get_total_reserves_value<U, SUILEND_SHARES_TOKEN>(
         self,
         suilend_lending_market,
@@ -161,12 +154,8 @@ public(package) fun add_liquidity<U, SUILEND_SHARES_TOKEN>(
         deposit_underlying_value,
         total_shares,
     );
-    if (self.pool_shares.contains(pool_id)) {
-        let pool_shares = self.pool_shares.borrow_mut<ID, u64>(pool_id);
-        *pool_shares = *pool_shares + shares_to_mint;
-    } else {
-        self.pool_shares.add(pool_id, shares_to_mint);
-    };
+    let pool_shares = self.pool_shares.borrow_mut<ID, u64>(pool_id);
+    *pool_shares = *pool_shares + shares_to_mint;
 }
 
 public(package) fun remove_liquidity<U, SUILEND_SHARES_TOKEN>(
@@ -174,11 +163,11 @@ public(package) fun remove_liquidity<U, SUILEND_SHARES_TOKEN>(
     phase_info: &PhaseInfo,
     suilend_lending_market: &mut LendingMarket<SUILEND_SHARES_TOKEN>,
     pool_id: ID,
-    redeem_underlying_value: u64,
+    expect_underlying_value: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): Coin<U> {
-    assert!(self.pool_shares.contains(pool_id), ErrorPoolNotRegistered);
+    self.assert_pool_registered(pool_id);
 
     phase_info.assert_liquidity_providing_phase();
 
@@ -194,7 +183,7 @@ public(package) fun remove_liquidity<U, SUILEND_SHARES_TOKEN>(
     );
     let shares_to_burn = inner_calculate_shares_to_burn(
         total_reserves_value,
-        redeem_underlying_value,
+        expect_underlying_value,
         self.total_shares,
     );
     let pool_shares = self.pool_shares.borrow_mut<ID, u64>(pool_id);
@@ -204,11 +193,11 @@ public(package) fun remove_liquidity<U, SUILEND_SHARES_TOKEN>(
     // Routing to lending markets
     let underlying_coin = self.inner_route_redeeming<U, SUILEND_SHARES_TOKEN>(
         suilend_lending_market,
-        redeem_underlying_value,
+        expect_underlying_value,
         clock,
         ctx,
     );
-    assert!(underlying_coin.value() == redeem_underlying_value, ErrorSuilendLendingTokenValueLoss);
+    assert!(underlying_coin.value() == expect_underlying_value, ErrorSuilendLendingTokenValueLoss);
 
     underlying_coin
 }
@@ -265,7 +254,7 @@ fun inner_route_depositing<U, SUILEND_SHARES_TOKEN>(
 fun inner_route_redeeming<U, SUILEND_SHARES_TOKEN>(
     self: &mut Lending,
     suilend_lending_market: &mut LendingMarket<SUILEND_SHARES_TOKEN>,
-    redeem_amount: u64,
+    expect_underlying_value: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): Coin<U> {
@@ -277,7 +266,7 @@ fun inner_route_redeeming<U, SUILEND_SHARES_TOKEN>(
         >(get_suilend_reserves_token_key());
     let ctoken_amount = underlying_to_ctoken_value<SUILEND_SHARES_TOKEN, U>(
         suilend_lending_market,
-        redeem_amount,
+        expect_underlying_value,
     );
     let redeem_ctoken_balanace = suilend_ctoken_reserves_balance.split(ctoken_amount);
     let underlying_coin = suilend_lending_market.redeem_ctokens_and_withdraw_liquidity<
@@ -318,6 +307,16 @@ fun inner_calculate_shares_to_burn(reserves: u64, redeem_amount: u64, total_shar
         redeem_amount * total_shares / reserves
     };
     shares_to_burn
+}
+
+// Assertions
+
+public fun assert_pool_registered(self: &Lending, pool_id: ID) {
+    assert!(self.pool_shares.contains(pool_id), ErrorPoolNotRegistered);
+}
+
+fun assert_weights_valid(self: &LendingWeightBps) {
+    assert!(self.suilend == 10000, ErrorInvalidWeights);
 }
 
 // Suilend implementation

@@ -183,9 +183,9 @@ fun test_lounge_can_claim_by_recipient() {
     scenario.next_tx(recipient);
     {
         let lounge = lounge_factory.get_lounge_number_mut(0);
-        let claimed_coin = lounge.claim<SUI>(scenario.ctx());
-        assert!(claimed_coin.value() == claim_value);
-        claimed_coin.destroy_for_testing();
+        let claimed_balance = lounge.claim<SUI>(scenario.ctx());
+        assert!(claimed_balance.value() == claim_value);
+        claimed_balance.destroy_for_testing();
     };
 
     test_scenario::return_shared(phase_info);
