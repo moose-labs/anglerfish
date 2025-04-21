@@ -2,7 +2,7 @@
 
 [move]
 version = 3
-manifest_digest = "E21BBFFE90AAAD363956495146378BE9FB6543D408E983A674B7A100A998837A"
+manifest_digest = "4239CB3E5750958DCFEDC74C54A3CB2E1837F461CA144E57239A857D2DC8A9BC"
 deps_digest = "3C4103934B1E040BB6B23F1D610B4EF9F2F1166A50A104EADCF77467C004C600"
 dependencies = [
   { id = "Sui", name = "Sui" },
@@ -58,7 +58,7 @@ dependencies = [
 
 [[move.package]]
 id = "sprungsui"
-source = { local = "../suilend/contracts/sprungsui" }
+source = { git = "https://github.com/pawsengineer/suilend.git", rev = "fix/test_suite", subdir = "contracts/sprungsui" }
 
 dependencies = [
   { id = "Sui", name = "Sui" },
@@ -66,7 +66,7 @@ dependencies = [
 
 [[move.package]]
 id = "suilend"
-source = { local = "../suilend/contracts/suilend" }
+source = { git = "https://github.com/pawsengineer/suilend.git", rev = "fix/test_suite", subdir = "contracts/suilend" }
 
 dependencies = [
   { id = "Pyth", name = "Pyth" },
