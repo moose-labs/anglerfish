@@ -2,25 +2,15 @@
 
 [move]
 version = 3
-manifest_digest = "4239CB3E5750958DCFEDC74C54A3CB2E1837F461CA144E57239A857D2DC8A9BC"
-deps_digest = "3C4103934B1E040BB6B23F1D610B4EF9F2F1166A50A104EADCF77467C004C600"
+manifest_digest = "96A8865212A794F7FCA19DF8C34293DF3F1A701D4B59ACD01FADB2BB5886042A"
+deps_digest = "F8BBB0CCB2491CA29A3DF03D6F92277A4F3574266507ACD77214D37ECA3F3082"
 dependencies = [
   { id = "Sui", name = "Sui" },
-  { id = "suilend", name = "suilend" },
 ]
 
 [[move.package]]
 id = "MoveStdlib"
 source = { git = "https://github.com/MystenLabs/sui.git", rev = "framework/mainnet", subdir = "crates/sui-framework/packages/move-stdlib" }
-
-[[move.package]]
-id = "Pyth"
-source = { git = "https://github.com/solendprotocol/pyth-crosschain.git", rev = "98e218c64bb75cf1350eb7b021e1ffcc3aedfd62", subdir = "target_chains/sui/contracts" }
-
-dependencies = [
-  { id = "Sui", name = "Sui" },
-  { id = "Wormhole", name = "Wormhole" },
-]
 
 [[move.package]]
 id = "Sui"
@@ -30,52 +20,7 @@ dependencies = [
   { id = "MoveStdlib", name = "MoveStdlib" },
 ]
 
-[[move.package]]
-id = "SuiSystem"
-source = { git = "https://github.com/MystenLabs/sui.git", rev = "framework/mainnet", subdir = "crates/sui-framework/packages/sui-system" }
-
-dependencies = [
-  { id = "MoveStdlib", name = "MoveStdlib" },
-  { id = "Sui", name = "Sui" },
-]
-
-[[move.package]]
-id = "Wormhole"
-source = { git = "https://github.com/solendprotocol/wormhole.git", rev = "e1698d3c72b15cdddd7da98ad43e151f83b72a0a", subdir = "sui/wormhole" }
-
-dependencies = [
-  { id = "Sui", name = "Sui" },
-]
-
-[[move.package]]
-id = "liquid_staking"
-source = { git = "https://github.com/solendprotocol/liquid-staking.git", rev = "main", subdir = "contracts" }
-
-dependencies = [
-  { id = "Sui", name = "Sui" },
-  { id = "SuiSystem", name = "SuiSystem" },
-]
-
-[[move.package]]
-id = "sprungsui"
-source = { git = "https://github.com/pawsengineer/suilend.git", rev = "fix/test_suite", subdir = "contracts/sprungsui" }
-
-dependencies = [
-  { id = "Sui", name = "Sui" },
-]
-
-[[move.package]]
-id = "suilend"
-source = { git = "https://github.com/pawsengineer/suilend.git", rev = "fix/test_suite", subdir = "contracts/suilend" }
-
-dependencies = [
-  { id = "Pyth", name = "Pyth" },
-  { id = "Sui", name = "Sui" },
-  { id = "liquid_staking", name = "liquid_staking" },
-  { id = "sprungsui", name = "sprungsui" },
-]
-
 [move.toolchain-version]
-compiler-version = "1.46.1"
+compiler-version = "1.46.3"
 edition = "2024.alpha"
 flavor = "sui"
