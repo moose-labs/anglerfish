@@ -2,6 +2,8 @@
 module red_ocean::pool_test;
 
 use red_ocean::base_test_suite::build_base_test_suite;
+use red_ocean::phase::PhaseInfo;
+use red_ocean::phase_test_suite::build_phase_test_suite;
 use red_ocean::pool::{Self, PoolCap, PoolFactory};
 use red_ocean::pool_test_suite::build_pool_test_suite;
 use sui::balance::create_for_testing as create_balance_for_testing;
@@ -45,11 +47,18 @@ fun test_cannot_create_pool_with_risk_ratio_greater_than_100_percent() {
     scenario.next_tx(AUTHORITY);
     {
         let mut pool_factory = scenario.take_shared<PoolFactory>();
+        let phase_info = scenario.take_shared<PhaseInfo>();
         let pool_cap = scenario.take_from_sender<PoolCap>();
 
-        pool_cap.create_pool<Coin<SUI>>(&mut pool_factory, 10001, scenario.ctx());
+        pool_cap.create_pool<Coin<SUI>>(
+            &mut pool_factory,
+            &phase_info,
+            10001,
+            scenario.ctx(),
+        );
 
         scenario.return_to_sender(pool_cap);
+        test_scenario::return_shared(phase_info);
         test_scenario::return_shared(pool_factory);
     };
 
@@ -59,15 +68,15 @@ fun test_cannot_create_pool_with_risk_ratio_greater_than_100_percent() {
 
 #[test]
 fun test_pool_can_only_created_by_authority() {
-    let (mut scenario, clock) = build_base_test_suite(AUTHORITY);
+    let (mut scenario, clock, phase_info) = build_phase_test_suite(AUTHORITY);
 
     scenario.next_tx(AUTHORITY);
     {
         let mut pool_factory = scenario.take_shared<PoolFactory>();
         let pool_cap = scenario.take_from_sender<PoolCap>();
 
-        pool_cap.create_pool<SUI>(&mut pool_factory, 5000, scenario.ctx());
-        pool_cap.create_pool<SUI>(&mut pool_factory, 10000, scenario.ctx());
+        pool_cap.create_pool<SUI>(&mut pool_factory, &phase_info, 5000, scenario.ctx());
+        pool_cap.create_pool<SUI>(&mut pool_factory, &phase_info, 10000, scenario.ctx());
 
         // Pool 5000
         {
@@ -93,27 +102,29 @@ fun test_pool_can_only_created_by_authority() {
     };
 
     clock.destroy_for_testing();
+    test_scenario::return_shared(phase_info);
     scenario.end();
 }
 
 #[test]
 #[expected_failure(abort_code = pool::ErrorPoolAlreadyCreated)]
 fun test_cannot_create_pool_with_same_risk() {
-    let (mut scenario, clock) = build_base_test_suite(AUTHORITY);
+    let (mut scenario, clock, phase_info) = build_phase_test_suite(AUTHORITY);
 
     scenario.next_tx(AUTHORITY);
     {
         let mut pool_factory = scenario.take_shared<PoolFactory>();
         let pool_cap = scenario.take_from_sender<PoolCap>();
 
-        pool_cap.create_pool<SUI>(&mut pool_factory, 5000, scenario.ctx());
-        pool_cap.create_pool<SUI>(&mut pool_factory, 5000, scenario.ctx());
+        pool_cap.create_pool<SUI>(&mut pool_factory, &phase_info, 5000, scenario.ctx());
+        pool_cap.create_pool<SUI>(&mut pool_factory, &phase_info, 5000, scenario.ctx());
 
         scenario.return_to_sender(pool_cap);
         test_scenario::return_shared(pool_factory);
     };
 
     clock.destroy_for_testing();
+    test_scenario::return_shared(phase_info);
     scenario.end();
 }
 

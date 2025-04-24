@@ -110,6 +110,12 @@ public fun next(
     self.inner_bump_round(phase_info);
 }
 
+// ==== Public views ====
+
+public fun is_initialized(self: &PhaseInfo): bool {
+    self.current_phase != Phase::Uninitialized
+}
+
 public fun get_current_phase(self: &PhaseInfo): Phase {
     self.current_phase
 }
@@ -175,7 +181,7 @@ fun assert_durations(self: &PhaseDurations) {
 /// and whether the phase info object is initialized.
 
 public fun assert_initialized(self: &PhaseInfo) {
-    assert!(self.current_phase != Phase::Uninitialized, ErrorUninitialized);
+    assert!(self.is_initialized(), ErrorUninitialized);
 }
 
 public fun assert_liquidity_providing_phase(self: &PhaseInfo) {

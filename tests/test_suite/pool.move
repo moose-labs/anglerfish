@@ -19,21 +19,12 @@ public fun build_pool_test_suite(authority: address): (Scenario, Clock, PhaseInf
     let (mut scenario, mut clock, mut phase_info) = build_phase_test_suite(authority);
     scenario.next_tx(authority);
 
-    // Settling phase to liquidity providing phase
-    let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
-
-    clock.increment_for_testing(PHASE_DURATION);
-    phase_info_cap.next(&mut phase_info, &clock, scenario.ctx());
-    phase_info.assert_liquidity_providing_phase();
-
-    scenario.return_to_sender(phase_info_cap);
-
     // Create and initialize pool
     let pool_cap = scenario.take_from_sender<PoolCap>();
     let mut pool_factory = scenario.take_shared<PoolFactory>();
 
-    pool_cap.create_pool<SUI>(&mut pool_factory, TEST_POOL_1_RISK, scenario.ctx());
-    pool_cap.create_pool<SUI>(&mut pool_factory, TEST_POOL_2_RISK, scenario.ctx());
+    pool_cap.create_pool<SUI>(&mut pool_factory, &phase_info, TEST_POOL_1_RISK, scenario.ctx());
+    pool_cap.create_pool<SUI>(&mut pool_factory, &phase_info, TEST_POOL_2_RISK, scenario.ctx());
 
     let pool = pool_factory.get_pool_by_risk_ratio_mut<SUI>(TEST_POOL_1_RISK);
     pool_cap.set_deposit_enabled<SUI>(pool, true);
@@ -44,6 +35,15 @@ public fun build_pool_test_suite(authority: address): (Scenario, Clock, PhaseInf
     pool.assert_deposit_enabled();
 
     scenario.return_to_sender(pool_cap);
+
+    // Settling phase to liquidity providing phase
+    let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
+
+    clock.increment_for_testing(PHASE_DURATION);
+    phase_info_cap.next(&mut phase_info, &clock, scenario.ctx());
+    phase_info.assert_liquidity_providing_phase();
+
+    scenario.return_to_sender(phase_info_cap);
 
     (scenario, clock, phase_info, pool_factory)
 }

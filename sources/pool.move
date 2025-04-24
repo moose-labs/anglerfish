@@ -75,11 +75,14 @@ public fun init_for_testing(ctx: &mut TxContext) {
 public fun create_pool<T>(
     _self: &PoolCap, // Enforce to use by pool cap capability
     pool_factory: &mut PoolFactory,
+    phase_info: &PhaseInfo,
     risk_ratio_bps: u64,
     ctx: &mut TxContext,
 ) {
     assert!(risk_ratio_bps <= MAX_RISK_RATIO_BPS, ErrorPoolRiskRatioTooHigh);
     assert!(pool_factory.pool_keys.contains(&risk_ratio_bps) == false, ErrorPoolAlreadyCreated);
+
+    phase_info.assert_settling_phase();
 
     let pool = Pool<T> {
         id: object::new(ctx),
