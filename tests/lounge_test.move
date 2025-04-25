@@ -25,7 +25,7 @@ const UNAUTHORIZED: address = @0xFFF;
 #[test]
 #[expected_failure(abort_code = test_scenario::EEmptyInventory)]
 fun test_capability_cannot_be_taken_by_unauthorized_user() {
-    let (mut scenario, clock, phase_info, pool_factory, lounge_factory) = build_lounge_test_suite(
+    let (mut scenario, clock, phase_info, pool_registry, lounge_factory) = build_lounge_test_suite(
         AUTHORITY,
     );
 
@@ -37,7 +37,7 @@ fun test_capability_cannot_be_taken_by_unauthorized_user() {
     };
 
     test_scenario::return_shared(phase_info);
-    test_scenario::return_shared(pool_factory);
+    test_scenario::return_shared(pool_registry);
     test_scenario::return_shared(lounge_factory);
     clock.destroy_for_testing();
     scenario.end();
@@ -50,7 +50,7 @@ fun test_cannot_create_lounge_with_0x0_recipient() {
         mut scenario,
         clock,
         phase_info,
-        pool_factory,
+        pool_registry,
         mut lounge_factory,
     ) = build_lounge_test_suite(
         AUTHORITY,
@@ -64,7 +64,7 @@ fun test_cannot_create_lounge_with_0x0_recipient() {
     };
 
     test_scenario::return_shared(phase_info);
-    test_scenario::return_shared(pool_factory);
+    test_scenario::return_shared(pool_registry);
     test_scenario::return_shared(lounge_factory);
     clock.destroy_for_testing();
     scenario.end();
@@ -76,7 +76,7 @@ fun test_create_lounge_by_capability() {
         mut scenario,
         clock,
         phase_info,
-        pool_factory,
+        pool_registry,
         mut lounge_factory,
     ) = build_lounge_test_suite(
         AUTHORITY,
@@ -90,7 +90,7 @@ fun test_create_lounge_by_capability() {
     };
 
     test_scenario::return_shared(phase_info);
-    test_scenario::return_shared(pool_factory);
+    test_scenario::return_shared(pool_registry);
     test_scenario::return_shared(lounge_factory);
     clock.destroy_for_testing();
     scenario.end();
@@ -109,7 +109,7 @@ fun test_lounge_cannot_claim_by_unauthorized() {
         mut scenario,
         clock,
         phase_info,
-        pool_factory,
+        pool_registry,
         mut lounge_factory,
     ) = build_lounge_test_suite(
         AUTHORITY,
@@ -140,7 +140,7 @@ fun test_lounge_cannot_claim_by_unauthorized() {
     };
 
     test_scenario::return_shared(phase_info);
-    test_scenario::return_shared(pool_factory);
+    test_scenario::return_shared(pool_registry);
     test_scenario::return_shared(lounge_factory);
     clock.destroy_for_testing();
     scenario.end();
@@ -152,7 +152,7 @@ fun test_lounge_can_claim_by_recipient() {
         mut scenario,
         clock,
         phase_info,
-        pool_factory,
+        pool_registry,
         mut lounge_factory,
     ) = build_lounge_test_suite(
         AUTHORITY,
@@ -189,7 +189,7 @@ fun test_lounge_can_claim_by_recipient() {
     };
 
     test_scenario::return_shared(phase_info);
-    test_scenario::return_shared(pool_factory);
+    test_scenario::return_shared(pool_registry);
     test_scenario::return_shared(lounge_factory);
     clock.destroy_for_testing();
     scenario.end();

@@ -4,7 +4,7 @@ module red_ocean::prize_pool_test_suite;
 use red_ocean::lounge::LoungeFactory;
 use red_ocean::lounge_test_suite::build_lounge_test_suite;
 use red_ocean::phase::{PhaseInfo, PhaseInfoCap};
-use red_ocean::pool::PoolFactory;
+use red_ocean::pool::PoolRegistry;
 use red_ocean::prize_pool::{PrizePool, PrizePoolCap};
 use sui::balance::create_for_testing as create_balance_for_testing;
 use sui::clock::Clock;
@@ -23,12 +23,12 @@ const PRIZE_POOL_PROTOCOL_FEE_BPS: u64 = 500;
 /// Set pool factory for prize pool and also deposit liquidity into the pools.
 public fun build_prize_pool_test_suite(
     authority: address,
-): (Scenario, Clock, PhaseInfo, PoolFactory, LoungeFactory, PrizePool) {
+): (Scenario, Clock, PhaseInfo, PoolRegistry, LoungeFactory, PrizePool) {
     let (
         mut scenario,
         clock,
         phase_info,
-        mut pool_factory,
+        mut pool_registry,
         lounge_factory,
     ) = build_lounge_test_suite(authority);
     (authority);
@@ -47,18 +47,18 @@ public fun build_prize_pool_test_suite(
 
     scenario.next_tx(user1);
     {
-        let pool = pool_factory.get_pool_by_risk_ratio_mut<SUI>(TEST_POOL_1_RISK);
         let balance = create_balance_for_testing<SUI>(1000000);
-        pool.deposit<SUI>(
+        pool_registry.deposit<SUI>(
             &phase_info,
+            TEST_POOL_1_RISK,
             sui::coin::from_balance(balance, scenario.ctx()),
             scenario.ctx(),
         );
 
-        let pool = pool_factory.get_pool_by_risk_ratio_mut<SUI>(TEST_POOL_2_RISK);
         let balance = create_balance_for_testing<SUI>(2000000);
-        pool.deposit<SUI>(
+        pool_registry.deposit<SUI>(
             &phase_info,
+            TEST_POOL_2_RISK,
             sui::coin::from_balance(balance, scenario.ctx()),
             scenario.ctx(),
         );
@@ -66,34 +66,34 @@ public fun build_prize_pool_test_suite(
 
     scenario.next_tx(user2);
     {
-        let pool = pool_factory.get_pool_by_risk_ratio_mut<SUI>(TEST_POOL_1_RISK);
         let balance = create_balance_for_testing<SUI>(1000000);
-        pool.deposit<SUI>(
+        pool_registry.deposit<SUI>(
             &phase_info,
+            TEST_POOL_1_RISK,
             sui::coin::from_balance(balance, scenario.ctx()),
             scenario.ctx(),
         );
 
-        let pool = pool_factory.get_pool_by_risk_ratio_mut<SUI>(TEST_POOL_2_RISK);
         let balance = create_balance_for_testing<SUI>(2000000);
-        pool.deposit<SUI>(
+        pool_registry.deposit<SUI>(
             &phase_info,
+            TEST_POOL_2_RISK,
             sui::coin::from_balance(balance, scenario.ctx()),
             scenario.ctx(),
         );
     };
-    (scenario, clock, phase_info, pool_factory, lounge_factory, prize_pool)
+    (scenario, clock, phase_info, pool_registry, lounge_factory, prize_pool)
 }
 
 /// build_initialized_prize_pool_test_suite
 public fun build_initialized_prize_pool_test_suite(
     authority: address,
-): (Scenario, Clock, PhaseInfo, PoolFactory, LoungeFactory, PrizePool) {
+): (Scenario, Clock, PhaseInfo, PoolRegistry, LoungeFactory, PrizePool) {
     let (
         mut scenario,
         mut clock,
         mut phase_info,
-        pool_factory,
+        pool_registry,
         lounge_factory,
         mut prize_pool,
     ) = build_prize_pool_test_suite(authority);
@@ -104,7 +104,7 @@ public fun build_initialized_prize_pool_test_suite(
     let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
 
     prize_pool_cap.new_round_table_if_needed(&mut prize_pool, &phase_info, scenario.ctx());
-    prize_pool_cap.set_pool_factory(&mut prize_pool, object::id(&pool_factory), scenario.ctx());
+    prize_pool_cap.set_pool_registry(&mut prize_pool, object::id(&pool_registry), scenario.ctx());
     prize_pool_cap.set_lounge_factory(&mut prize_pool, object::id(&lounge_factory), scenario.ctx());
     prize_pool_cap.set_max_players(&mut prize_pool, PRIZE_POOL_MAX_PLAYERS, scenario.ctx());
     prize_pool_cap.set_price_per_ticket(
@@ -127,5 +127,5 @@ public fun build_initialized_prize_pool_test_suite(
 
     scenario.return_to_sender(prize_pool_cap);
 
-    (scenario, clock, phase_info, pool_factory, lounge_factory, prize_pool)
+    (scenario, clock, phase_info, pool_registry, lounge_factory, prize_pool)
 }

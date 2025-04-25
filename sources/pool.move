@@ -22,7 +22,7 @@ public struct PoolCap has key, store {
     id: UID,
 }
 
-public struct PoolFactory has key {
+public struct PoolRegistry has key {
     id: UID,
     /// The list of pool risk ratios that are created
     pool_ids: VecMap<u64, address>,
@@ -57,7 +57,7 @@ fun init(ctx: &mut TxContext) {
         id: object::new(ctx),
     };
 
-    transfer::share_object(PoolFactory {
+    transfer::share_object(PoolRegistry {
         id: object::new(ctx),
         pool_ids: vec_map::empty(),
         pools: bag::new(ctx),
@@ -74,19 +74,19 @@ public fun init_for_testing(ctx: &mut TxContext) {
 
 public fun create_pool<T>(
     _self: &PoolCap, // Enforce to use by pool cap capability
-    pool_factory: &mut PoolFactory,
+    pool_registry: &mut PoolRegistry,
     phase_info: &PhaseInfo,
     risk_ratio_bps: u64,
     ctx: &mut TxContext,
 ) {
     assert!(risk_ratio_bps <= MAX_RISK_RATIO_BPS, ErrorPoolRiskRatioTooHigh);
-    assert!(pool_factory.pool_ids.contains(&risk_ratio_bps) == false, ErrorPoolAlreadyCreated);
+    assert!(pool_registry.pool_ids.contains(&risk_ratio_bps) == false, ErrorPoolAlreadyCreated);
 
     phase_info.assert_settling_phase();
 
     let pool_id = object::new(ctx);
 
-    pool_factory.pool_ids.insert(risk_ratio_bps, pool_id.to_address());
+    pool_registry.pool_ids.insert(risk_ratio_bps, pool_id.to_address());
 
     let pool = Pool<T> {
         id: pool_id,
@@ -99,13 +99,13 @@ public fun create_pool<T>(
         is_deposit_enabled: false,
     };
 
-    bag::add(&mut pool_factory.pools, risk_ratio_bps, pool)
+    bag::add(&mut pool_registry.pools, risk_ratio_bps, pool)
 }
 
 /// Pool Factory implementation
 ///
 
-public fun get_total_reserves_value<T>(self: &PoolFactory): u64 {
+public fun get_total_reserves_value<T>(self: &PoolRegistry): u64 {
     let (pool_risk_ratios, len) = self.inner_get_pool_risk_ratios_with_len();
 
     let mut i = 0;
@@ -120,7 +120,7 @@ public fun get_total_reserves_value<T>(self: &PoolFactory): u64 {
     total_reserves_value
 }
 
-public fun get_total_prize_reserves_value<T>(self: &PoolFactory): u64 {
+public fun get_total_prize_reserves_value<T>(self: &PoolRegistry): u64 {
     let (pool_risk_ratios, len) = self.inner_get_pool_risk_ratios_with_len();
 
     let mut i = 0;
@@ -135,7 +135,7 @@ public fun get_total_prize_reserves_value<T>(self: &PoolFactory): u64 {
     total_prize_reserves_value
 }
 
-public fun get_total_risk_ratio_bps(self: &PoolFactory): u64 {
+public fun get_total_risk_ratio_bps(self: &PoolRegistry): u64 {
     let (pool_risk_ratios, len) = self.inner_get_pool_risk_ratios_with_len();
 
     let mut i = 0;
@@ -149,25 +149,18 @@ public fun get_total_risk_ratio_bps(self: &PoolFactory): u64 {
     total_risk_ratio_bps
 }
 
-public fun get_pool_by_risk_ratio<T>(self: &PoolFactory, risk_ratio_bps: u64): &Pool<T> {
+public fun get_pool_by_risk_ratio<T>(self: &PoolRegistry, risk_ratio_bps: u64): &Pool<T> {
     bag::borrow(&self.pools, risk_ratio_bps)
 }
 
-public fun get_pool_by_risk_ratio_mut<T>(
-    self: &mut PoolFactory,
-    risk_ratio_bps: u64,
-): &mut Pool<T> {
-    bag::borrow_mut(&mut self.pools, risk_ratio_bps)
-}
-
-public fun get_pool_risk_ratios(self: &PoolFactory): vector<u64> {
+public fun get_pool_risk_ratios(self: &PoolRegistry): vector<u64> {
     self.pool_ids.keys()
 }
 
 /// Pool Factory inner functions
 ///
 
-fun inner_get_pool_risk_ratios_with_len(self: &PoolFactory): (vector<u64>, u64) {
+fun inner_get_pool_risk_ratios_with_len(self: &PoolRegistry): (vector<u64>, u64) {
     let pool_risk_ratios = self.get_pool_risk_ratios();
     let pool_risk_ratios_len = pool_risk_ratios.length();
     (pool_risk_ratios, pool_risk_ratios_len)
@@ -178,88 +171,92 @@ fun inner_get_pool_risk_ratios_with_len(self: &PoolFactory): (vector<u64>, u64) 
 
 public fun set_deposit_enabled<T>(
     _self: &PoolCap, // Enforce to use by pool cap capability
-    pool_factory: &mut PoolFactory,
+    pool_registry: &mut PoolRegistry,
     risk_ratio_bps: u64,
     enabled: bool,
 ) {
-    let pool = get_pool_by_risk_ratio_mut<T>(pool_factory, risk_ratio_bps);
+    let pool = get_pool_by_risk_ratio_mut<T>(pool_registry, risk_ratio_bps);
     pool.is_deposit_enabled = enabled;
 }
 
 public fun deposit<T>(
-    self: &mut Pool<T>,
+    pool_registry: &mut PoolRegistry,
     phase_info: &PhaseInfo,
+    risk_ratio_bps: u64,
     deposit_coin: Coin<T>,
     ctx: &mut TxContext,
 ) {
-    self.assert_deposit_enabled();
     phase_info.assert_liquidity_providing_phase();
+
+    let pool = get_pool_by_risk_ratio_mut<T>(pool_registry, risk_ratio_bps);
+    pool.assert_deposit_enabled();
 
     let depositor = tx_context::sender(ctx);
     let deposit_amount = deposit_coin.value();
 
-    let reserve = self.reserves.value();
+    let reserve = pool.reserves.value();
     let shares_to_mint = if (reserve == 0) {
         deposit_amount
     } else {
-        deposit_amount * self.total_shares / reserve
+        deposit_amount * pool.total_shares / reserve
     };
 
     assert!(shares_to_mint > 0, ErrorTooSmallToMint);
 
-    self.total_shares = self.total_shares + shares_to_mint;
+    pool.total_shares = pool.total_shares + shares_to_mint;
 
-    self.inner_put_reserves_balance(deposit_coin);
+    pool.inner_put_reserves_balance(deposit_coin);
 
-    if (table::contains<address, u64>(&self.user_shares, depositor)) {
-        let deposited = table::borrow_mut<address, u64>(&mut self.user_shares, depositor);
+    if (table::contains<address, u64>(&pool.user_shares, depositor)) {
+        let deposited = table::borrow_mut<address, u64>(&mut pool.user_shares, depositor);
         *deposited = *deposited + shares_to_mint;
     } else {
-        table::add<address, u64>(&mut self.user_shares, depositor, shares_to_mint);
+        table::add<address, u64>(&mut pool.user_shares, depositor, shares_to_mint);
     }
 }
 
-public fun deposit_fee<T>(self: &mut Pool<T>, fee_coin: Coin<T>) {
-    self.cumulative_fees = self.cumulative_fees + fee_coin.value();
-    self.inner_put_reserves_balance(fee_coin);
-}
-
 public fun redeem<T>(
-    self: &mut Pool<T>,
+    pool_registry: &mut PoolRegistry,
     phase_info: &PhaseInfo,
+    risk_ratio_bps: u64,
     redeem_shares_amount: u64,
     ctx: &mut TxContext,
 ): Coin<T> {
     phase_info.assert_liquidity_providing_phase();
 
+    let pool = get_pool_by_risk_ratio_mut<T>(pool_registry, risk_ratio_bps);
+
     let redeemer = tx_context::sender(ctx);
-    let user_shares_amount = self.get_user_shares(redeemer);
+    let user_shares_amount = pool.get_user_shares(redeemer);
 
     assert!(redeem_shares_amount > 0, ErrorInsufficientShares);
     assert!(redeem_shares_amount <= user_shares_amount, ErrorTooLargeToRedeem);
 
-    let total_liquidity = self.reserves.value();
-    let total_shares = self.total_shares;
+    let total_liquidity = pool.reserves.value();
+    let total_shares = pool.total_shares;
     let redeem_value = redeem_shares_amount * total_liquidity / total_shares;
 
     // Update user shares
-    let user_shares = self.user_shares.borrow_mut(redeemer);
+    let user_shares = pool.user_shares.borrow_mut(redeemer);
     *user_shares = *user_shares - redeem_shares_amount;
 
     // Update total shares
-    self.total_shares = self.total_shares - redeem_shares_amount;
+    pool.total_shares = pool.total_shares - redeem_shares_amount;
 
-    self.inner_take_reserves_balance(redeem_value, ctx)
+    pool.inner_take_reserves_balance(redeem_value, ctx)
 }
 
 public fun withdraw_prize<T>(
     _self: &PoolCap, // Enforce to use by pool cap capability
-    pool: &mut Pool<T>,
+    pool_registry: &mut PoolRegistry,
+    risk_ratio_bps: u64,
     phase_info: &PhaseInfo,
     lounge: &mut Lounge<T>,
     ctx: &mut TxContext,
 ) {
     phase_info.assert_settling_phase();
+
+    let pool = get_pool_by_risk_ratio_mut<T>(pool_registry, risk_ratio_bps);
 
     let prize_reserves_amount = pool.get_prize_reserves_value();
     let prize_coin = pool.inner_take_reserves_balance(prize_reserves_amount, ctx);
@@ -271,7 +268,7 @@ public fun get_deposit_enabled<T>(self: &Pool<T>): bool {
     self.is_deposit_enabled
 }
 
-public fun get_pools(self: &PoolFactory): &Bag {
+public fun get_pools(self: &PoolRegistry): &Bag {
     &self.pools
 }
 
@@ -321,4 +318,20 @@ fun inner_take_reserves_balance<T>(self: &mut Pool<T>, amount: u64, ctx: &mut Tx
 
 public fun assert_deposit_enabled<T>(self: &Pool<T>) {
     assert!(self.is_deposit_enabled, ErrorPoolDepositDisabled);
+}
+
+// === Test functions ===
+
+#[test_only]
+public fun get_pool_by_risk_ratio_mut<T>(
+    self: &mut PoolRegistry,
+    risk_ratio_bps: u64,
+): &mut Pool<T> {
+    bag::borrow_mut(&mut self.pools, risk_ratio_bps)
+}
+
+#[test_only]
+public fun deposit_fee<T>(self: &mut Pool<T>, fee_coin: Coin<T>) {
+    self.cumulative_fees = self.cumulative_fees + fee_coin.value();
+    self.inner_put_reserves_balance(fee_coin);
 }

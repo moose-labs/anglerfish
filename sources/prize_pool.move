@@ -2,7 +2,7 @@ module red_ocean::prize_pool;
 
 use red_ocean::lounge::{LoungeCap, LoungeFactory};
 use red_ocean::phase::{PhaseInfo, PhaseInfoCap};
-use red_ocean::pool::{PoolFactory, PoolCap};
+use red_ocean::pool::{PoolRegistry, PoolCap};
 use red_ocean::ticket_calculator::calculate_total_ticket_with_fees;
 use sui::bag::{Self, Bag};
 use sui::balance::{Self, Balance};
@@ -13,7 +13,7 @@ use sui::table::{Self, Table};
 use sui::vec_set::{Self, VecSet};
 
 const ErrorMaximumNumberOfPlayersReached: u64 = 1;
-const ErrorInvalidPoolFactory: u64 = 2;
+const ErrorInvalidPoolRegistry: u64 = 2;
 const ErrorPurchaseAmountTooLow: u64 = 3;
 const ErrorFeeAmountTooHigh: u64 = 4;
 const ErrorProtocolFeeAmountTooHigh: u64 = 5;
@@ -38,7 +38,7 @@ public struct PrizePoolCap has key, store {
 public struct PrizePool has key {
     id: UID,
     /// The pool factory that hold pools
-    pool_factory: Option<ID>,
+    pool_registry: Option<ID>,
     /// The lounge factory that can create lounges
     lounge_factory: Option<ID>,
     /// The maximum number of players that can participate in the prize pool each round
@@ -66,7 +66,7 @@ fun init(ctx: &mut TxContext) {
 
     transfer::share_object(PrizePool {
         id: object::new(ctx),
-        pool_factory: option::none(),
+        pool_registry: option::none(),
         lounge_factory: option::none(),
         max_players: 0,
         price_per_ticket: 0,
@@ -82,13 +82,13 @@ fun init(ctx: &mut TxContext) {
 
 /// Capability to manage the prize pool
 
-public fun set_pool_factory(
+public fun set_pool_registry(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
-    pool_factory_id: ID,
+    pool_registry_id: ID,
     _ctx: &mut TxContext,
 ) {
-    prize_pool.pool_factory = option::some(pool_factory_id);
+    prize_pool.pool_registry = option::some(pool_registry_id);
 }
 
 public fun set_lounge_factory(
@@ -158,8 +158,8 @@ public fun claim_protocol_fee<T>(
     fee_coin
 }
 
-public fun get_pool_factory(self: &PrizePool): Option<ID> {
-    self.pool_factory
+public fun get_pool_registry(self: &PrizePool): Option<ID> {
+    self.pool_registry
 }
 
 public fun get_lounge_factory(self: &PrizePool): Option<ID> {
@@ -195,8 +195,8 @@ public fun get_player_tickets(self: &PrizePool, phase_info: &PhaseInfo, player: 
 /// Public views & functions
 ///
 
-public fun get_total_prize_reserves_value<T>(_self: &PrizePool, pool_factory: &PoolFactory): u64 {
-    pool_factory.get_total_prize_reserves_value<T>()
+public fun get_total_prize_reserves_value<T>(_self: &PrizePool, pool_registry: &PoolRegistry): u64 {
+    pool_registry.get_total_prize_reserves_value<T>()
 }
 
 public fun get_ticket_reserves_value<T>(self: &PrizePool): u64 {
@@ -282,14 +282,14 @@ entry fun draw<T>(
     phase_info_cap: &PhaseInfoCap,
     phase_info: &mut PhaseInfo,
     prize_pool: &mut PrizePool,
-    pool_factory: &PoolFactory,
+    pool_registry: &PoolRegistry,
     rand: &Random,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     phase_info.assert_drawing_phase();
 
-    let prize_reserves_value = prize_pool.get_total_prize_reserves_value<T>(pool_factory);
+    let prize_reserves_value = prize_pool.get_total_prize_reserves_value<T>(pool_registry);
     let lp_tickets = prize_reserves_value / prize_pool.price_per_ticket;
     let total_fee_bps = prize_pool.fee_bps + prize_pool.protocol_fee_bps;
     let lp_tickets_with_fee = calculate_total_ticket_with_fees(
@@ -321,12 +321,12 @@ public fun settle<T>(
     lounge_cap: &LoungeCap,
     phase_info: &PhaseInfo,
     prize_pool: &mut PrizePool,
-    pool_factory: &mut PoolFactory,
+    pool_registry: &mut PoolRegistry,
     lounge_factory: &mut LoungeFactory,
     ctx: &mut TxContext,
 ) {
     phase_info.assert_settling_phase();
-    prize_pool.assert_valid_pool_factory(pool_factory);
+    prize_pool.assert_valid_pool_registry(pool_registry);
     prize_pool.assert_valid_longe_factory(lounge_factory);
 
     let current_round = phase_info.get_current_round();
@@ -338,7 +338,7 @@ public fun settle<T>(
         prize_pool.inner_aggregate_prize_to_lounge<T>(
             phase_info,
             pool_cap,
-            pool_factory,
+            pool_registry,
             lounge_factory,
             lounge_number,
             ctx,
@@ -346,12 +346,12 @@ public fun settle<T>(
     } else {
         // distribute ticket reserves to the pools
         let ticket_reserves = prize_pool.inner_get_ticket_reserves_balance_mut<T>();
-        inner_distribute_fee_to_pools<T>(phase_info, pool_factory, ticket_reserves, ctx);
+        inner_distribute_fee_to_pools<T>(phase_info, pool_registry, ticket_reserves, ctx);
     };
 
     // distribute fees reserves to the pools
     let fee_reserves = prize_pool.inner_get_fee_reserves_balance_mut<T>();
-    inner_distribute_fee_to_pools<T>(phase_info, pool_factory, fee_reserves, ctx);
+    inner_distribute_fee_to_pools<T>(phase_info, pool_registry, fee_reserves, ctx);
 
     // We create round table for the next round
     prize_pool.inner_ensure_round_table_exists(current_round + 1, ctx);
@@ -364,30 +364,29 @@ fun inner_aggregate_prize_to_lounge<T>(
     self: &PrizePool,
     phase_info: &PhaseInfo,
     pool_cap: &PoolCap,
-    pool_factory: &mut PoolFactory,
+    pool_registry: &mut PoolRegistry,
     lounge_factory: &mut LoungeFactory,
     lounge_number: u64,
     ctx: &mut TxContext,
 ) {
-    self.assert_valid_pool_factory(pool_factory);
+    self.assert_valid_pool_registry(pool_registry);
 
     let lounge = lounge_factory.get_lounge_number_mut<T>(lounge_number);
 
-    let risk_ratios = pool_factory.get_pool_risk_ratios();
+    let risk_ratios = pool_registry.get_pool_risk_ratios();
     let risk_ratios_len = risk_ratios.length();
 
     let mut i = 0;
     while (i < risk_ratios_len) {
         let risk_ratio_bps = risk_ratios[i];
-        let pool = pool_factory.get_pool_by_risk_ratio_mut<T>(risk_ratio_bps);
-        pool_cap.withdraw_prize<T>(pool, phase_info, lounge, ctx);
+        pool_cap.withdraw_prize<T>(pool_registry, risk_ratio_bps, phase_info, lounge, ctx);
         i = i + 1;
     };
 }
 
 fun inner_distribute_fee_to_pools<T>(
     phase_info: &PhaseInfo,
-    pool_factory: &mut PoolFactory,
+    pool_registry: &mut PoolRegistry,
     reserves: &mut Balance<T>,
     ctx: &mut TxContext,
 ) {
@@ -395,8 +394,8 @@ fun inner_distribute_fee_to_pools<T>(
 
     let reserves_value = reserves.value();
 
-    let total_risk_ratio_bps = pool_factory.get_total_risk_ratio_bps();
-    let risk_ratios = pool_factory.get_pool_risk_ratios();
+    let total_risk_ratio_bps = pool_registry.get_total_risk_ratio_bps();
+    let risk_ratios = pool_registry.get_pool_risk_ratios();
     let risk_ratios_len = risk_ratios.length();
 
     let mut i = 0;
@@ -408,7 +407,7 @@ fun inner_distribute_fee_to_pools<T>(
             total_risk_ratio_bps,
         );
         let fee_coin = from_balance(reserves.split(fee_for_pool), ctx);
-        let pool = pool_factory.get_pool_by_risk_ratio_mut<T>(risk_ratio_bps);
+        let pool = pool_registry.get_pool_by_risk_ratio_mut<T>(risk_ratio_bps);
         pool.deposit_fee(fee_coin);
         i = i + 1;
     };
@@ -524,14 +523,14 @@ fun inner_find_ticket_winner_address(
 /// Assertions
 ///
 
-fun assert_valid_pool_factory(self: &PrizePool, pool_factory: &PoolFactory) {
-    assert!(self.pool_factory.is_some(), ErrorInvalidPoolFactory);
-    assert!(object::id(pool_factory) == self.pool_factory.borrow(), ErrorInvalidPoolFactory);
+fun assert_valid_pool_registry(self: &PrizePool, pool_registry: &PoolRegistry) {
+    assert!(self.pool_registry.is_some(), ErrorInvalidPoolRegistry);
+    assert!(object::id(pool_registry) == self.pool_registry.borrow(), ErrorInvalidPoolRegistry);
 }
 
 fun assert_valid_longe_factory(self: &PrizePool, lounge_factory: &LoungeFactory) {
-    assert!(self.lounge_factory.is_some(), ErrorInvalidPoolFactory);
-    assert!(object::id(lounge_factory) == self.lounge_factory.borrow(), ErrorInvalidPoolFactory);
+    assert!(self.lounge_factory.is_some(), ErrorInvalidPoolRegistry);
+    assert!(object::id(lounge_factory) == self.lounge_factory.borrow(), ErrorInvalidPoolRegistry);
 }
 
 fun assert_max_players(self: &PrizePool, phase_info: &PhaseInfo) {

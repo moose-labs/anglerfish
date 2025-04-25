@@ -79,14 +79,14 @@ fun test_set_initialize_parameters() {
         AUTHORITY,
     );
 
-    // Set pool factory
+    // Set pool registry
     scenario.next_tx(AUTHORITY);
     {
         let pool_cap = scenario.take_from_sender<PrizePoolCap>();
 
-        assert!(prize_pool.get_pool_factory().is_none());
-        pool_cap.set_pool_factory(&mut prize_pool, object::id(&pool_factory), scenario.ctx());
-        assert!(prize_pool.get_pool_factory().borrow() == object::id(&pool_factory));
+        assert!(prize_pool.get_pool_registry().is_none());
+        pool_cap.set_pool_registry(&mut prize_pool, object::id(&pool_factory), scenario.ctx());
+        assert!(prize_pool.get_pool_registry().borrow() == object::id(&pool_factory));
 
         scenario.return_to_sender(pool_cap);
     };

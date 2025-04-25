@@ -4,7 +4,7 @@ module red_ocean::pool_test;
 use red_ocean::base_test_suite::build_base_test_suite;
 use red_ocean::phase::PhaseInfo;
 use red_ocean::phase_test_suite::build_phase_test_suite;
-use red_ocean::pool::{Self, PoolCap, PoolFactory};
+use red_ocean::pool::{Self, PoolCap, PoolRegistry};
 use red_ocean::pool_test_suite::build_pool_test_suite;
 use sui::balance::create_for_testing as create_balance_for_testing;
 use sui::coin::Coin;
@@ -46,12 +46,12 @@ fun test_cannot_create_pool_with_risk_ratio_greater_than_100_percent() {
 
     scenario.next_tx(AUTHORITY);
     {
-        let mut pool_factory = scenario.take_shared<PoolFactory>();
+        let mut pool_registry = scenario.take_shared<PoolRegistry>();
         let phase_info = scenario.take_shared<PhaseInfo>();
         let pool_cap = scenario.take_from_sender<PoolCap>();
 
         pool_cap.create_pool<Coin<SUI>>(
-            &mut pool_factory,
+            &mut pool_registry,
             &phase_info,
             10001,
             scenario.ctx(),
@@ -59,7 +59,7 @@ fun test_cannot_create_pool_with_risk_ratio_greater_than_100_percent() {
 
         scenario.return_to_sender(pool_cap);
         test_scenario::return_shared(phase_info);
-        test_scenario::return_shared(pool_factory);
+        test_scenario::return_shared(pool_registry);
     };
 
     clock.destroy_for_testing();
@@ -72,36 +72,36 @@ fun test_pool_can_only_created_by_authority() {
 
     scenario.next_tx(AUTHORITY);
     {
-        let mut pool_factory = scenario.take_shared<PoolFactory>();
+        let mut pool_registry = scenario.take_shared<PoolRegistry>();
         let pool_cap = scenario.take_from_sender<PoolCap>();
 
-        pool_cap.create_pool<SUI>(&mut pool_factory, &phase_info, 5000, scenario.ctx());
-        pool_cap.create_pool<SUI>(&mut pool_factory, &phase_info, 10000, scenario.ctx());
+        pool_cap.create_pool<SUI>(&mut pool_registry, &phase_info, 5000, scenario.ctx());
+        pool_cap.create_pool<SUI>(&mut pool_registry, &phase_info, 10000, scenario.ctx());
 
         // Pool 5000
         {
-            let pool = pool_factory.get_pool_by_risk_ratio<SUI>(5000);
+            let pool = pool_registry.get_pool_by_risk_ratio<SUI>(5000);
             assert!(pool.get_deposit_enabled() == false);
         };
 
         {
             // try enable depositing
-            pool_cap.set_deposit_enabled<SUI>(&mut pool_factory, 5000, true);
-            let pool = pool_factory.get_pool_by_risk_ratio<SUI>(5000);
+            pool_cap.set_deposit_enabled<SUI>(&mut pool_registry, 5000, true);
+            let pool = pool_registry.get_pool_by_risk_ratio<SUI>(5000);
             assert!(pool.get_deposit_enabled());
         };
 
         // Pool factory getter
         {
-            let pool_risk_ratios = pool_factory.get_pool_risk_ratios();
+            let pool_risk_ratios = pool_registry.get_pool_risk_ratios();
             assert!(pool_risk_ratios.length() == 2);
 
-            let total_risk_ratio_bps = pool_factory.get_total_risk_ratio_bps();
+            let total_risk_ratio_bps = pool_registry.get_total_risk_ratio_bps();
             assert!(total_risk_ratio_bps == 15000);
         };
 
         scenario.return_to_sender(pool_cap);
-        test_scenario::return_shared(pool_factory);
+        test_scenario::return_shared(pool_registry);
     };
 
     clock.destroy_for_testing();
@@ -116,14 +116,14 @@ fun test_cannot_create_pool_with_same_risk() {
 
     scenario.next_tx(AUTHORITY);
     {
-        let mut pool_factory = scenario.take_shared<PoolFactory>();
+        let mut pool_registry = scenario.take_shared<PoolRegistry>();
         let pool_cap = scenario.take_from_sender<PoolCap>();
 
-        pool_cap.create_pool<SUI>(&mut pool_factory, &phase_info, 5000, scenario.ctx());
-        pool_cap.create_pool<SUI>(&mut pool_factory, &phase_info, 5000, scenario.ctx());
+        pool_cap.create_pool<SUI>(&mut pool_registry, &phase_info, 5000, scenario.ctx());
+        pool_cap.create_pool<SUI>(&mut pool_registry, &phase_info, 5000, scenario.ctx());
 
         scenario.return_to_sender(pool_cap);
-        test_scenario::return_shared(pool_factory);
+        test_scenario::return_shared(pool_registry);
     };
 
     clock.destroy_for_testing();
@@ -147,21 +147,24 @@ const TEST_POOL_RISK: u64 = 5000;
 #[test]
 #[expected_failure(abort_code = pool::ErrorTooSmallToMint)]
 fun test_cannot_deposit_zero_coin() {
-    let (mut scenario, clock, phase_info, mut pool_factory) = build_pool_test_suite(AUTHORITY);
+    let (mut scenario, clock, phase_info, mut pool_registry) = build_pool_test_suite(AUTHORITY);
 
     scenario.next_tx(USER_1);
     {
-        let pool = pool_factory.get_pool_by_risk_ratio_mut<SUI>(TEST_POOL_RISK);
-
         let mut balance = create_balance_for_testing<SUI>(100);
         let deposit_coin = sui::coin::take(&mut balance, 0, scenario.ctx());
 
-        pool.deposit<SUI>(&phase_info, deposit_coin, scenario.ctx());
+        pool_registry.deposit<SUI>(
+            &phase_info,
+            TEST_POOL_RISK,
+            deposit_coin,
+            scenario.ctx(),
+        );
 
         balance.destroy_for_testing();
     };
 
-    test_scenario::return_shared(pool_factory);
+    test_scenario::return_shared(pool_registry);
     test_scenario::return_shared(phase_info);
     clock.destroy_for_testing();
     scenario.end();
@@ -170,17 +173,16 @@ fun test_cannot_deposit_zero_coin() {
 #[test]
 #[expected_failure(abort_code = pool::ErrorInsufficientShares)]
 fun test_cannot_redeem_zero_shares_amount() {
-    let (mut scenario, clock, phase_info, mut pool_factory) = build_pool_test_suite(
+    let (mut scenario, clock, phase_info, mut pool_registry) = build_pool_test_suite(
         AUTHORITY,
     );
-
-    let pool = pool_factory.get_pool_by_risk_ratio_mut<SUI>(TEST_POOL_RISK);
 
     scenario.next_tx(USER_1);
     {
         let balance = create_balance_for_testing<SUI>(100);
-        pool.deposit<SUI>(
+        pool_registry.deposit<SUI>(
             &phase_info,
+            TEST_POOL_RISK,
             sui::coin::from_balance(balance, scenario.ctx()),
             scenario.ctx(),
         );
@@ -188,8 +190,9 @@ fun test_cannot_redeem_zero_shares_amount() {
 
     scenario.next_tx(USER_1);
     {
-        let coin = pool.redeem<SUI>(
+        let coin = pool_registry.redeem<SUI>(
             &phase_info,
+            TEST_POOL_RISK,
             0,
             scenario.ctx(),
         );
@@ -197,7 +200,7 @@ fun test_cannot_redeem_zero_shares_amount() {
     };
 
     test_scenario::return_shared(phase_info);
-    test_scenario::return_shared(pool_factory);
+    test_scenario::return_shared(pool_registry);
     clock.destroy_for_testing();
     scenario.end();
 }
@@ -205,17 +208,16 @@ fun test_cannot_redeem_zero_shares_amount() {
 #[test]
 #[expected_failure(abort_code = pool::ErrorTooLargeToRedeem)]
 fun test_cannot_redeem_greater_than_deposit() {
-    let (mut scenario, clock, phase_info, mut pool_factory) = build_pool_test_suite(
+    let (mut scenario, clock, phase_info, mut pool_registry) = build_pool_test_suite(
         AUTHORITY,
     );
-
-    let pool = pool_factory.get_pool_by_risk_ratio_mut<SUI>(TEST_POOL_RISK);
 
     scenario.next_tx(USER_1);
     {
         let balance = create_balance_for_testing<SUI>(100);
-        pool.deposit<SUI>(
+        pool_registry.deposit<SUI>(
             &phase_info,
+            TEST_POOL_RISK,
             sui::coin::from_balance(balance, scenario.ctx()),
             scenario.ctx(),
         );
@@ -223,8 +225,9 @@ fun test_cannot_redeem_greater_than_deposit() {
 
     scenario.next_tx(USER_1);
     {
-        let coin = pool.redeem<SUI>(
+        let coin = pool_registry.redeem<SUI>(
             &phase_info,
+            TEST_POOL_RISK,
             200,
             scenario.ctx(),
         );
@@ -232,38 +235,40 @@ fun test_cannot_redeem_greater_than_deposit() {
     };
 
     test_scenario::return_shared(phase_info);
-    test_scenario::return_shared(pool_factory);
+    test_scenario::return_shared(pool_registry);
     clock.destroy_for_testing();
     scenario.end();
 }
 
 #[test]
 fun test_pool_deposit_redeem_shares() {
-    let (mut scenario, clock, phase_info, mut pool_factory) = build_pool_test_suite(
+    let (mut scenario, clock, phase_info, mut pool_registry) = build_pool_test_suite(
         AUTHORITY,
     );
-
-    let pool = pool_factory.get_pool_by_risk_ratio_mut<SUI>(TEST_POOL_RISK);
 
     // First user deposit, should get 1:1 share
     scenario.next_tx(USER_1);
     {
         let balance = create_balance_for_testing<SUI>(100);
-        pool.deposit<SUI>(
+        pool_registry.deposit<SUI>(
             &phase_info,
+            TEST_POOL_RISK,
             sui::coin::from_balance(balance, scenario.ctx()),
             scenario.ctx(),
         );
 
+        let pool = pool_registry.get_pool_by_risk_ratio<SUI>(TEST_POOL_RISK);
         assert!(pool.get_user_shares(USER_1) == 100);
         assert!(pool.get_reserves().value() == 100);
         assert!(pool.get_prize_reserves_value() == 50); // 50% of 100
     };
 
-    // Add fee to pool
+    // Add fee to pool for testing
     scenario.next_tx(AUTHORITY);
     {
         let balance = create_balance_for_testing<SUI>(100);
+
+        let pool = pool_registry.get_pool_by_risk_ratio_mut<SUI>(TEST_POOL_RISK);
         pool.deposit_fee(sui::coin::from_balance(balance, scenario.ctx()));
         assert!(pool.get_cumulative_fees() == 100);
     };
@@ -272,14 +277,16 @@ fun test_pool_deposit_redeem_shares() {
     scenario.next_tx(USER_2);
     {
         let balance = create_balance_for_testing<SUI>(100);
-        pool.deposit<SUI>(
+        pool_registry.deposit<SUI>(
             &phase_info,
+            TEST_POOL_RISK,
             sui::coin::from_balance(balance, scenario.ctx()),
             scenario.ctx(),
         );
 
         // check user shares
         // user_share_minted = user_deposit_amount / total_reserves_value * total_shares
+        let pool = pool_registry.get_pool_by_risk_ratio<SUI>(TEST_POOL_RISK);
         assert!(pool.get_user_shares(USER_1) == 100);
         assert!(pool.get_user_shares(USER_2) == 50);
         assert!(pool.get_reserves().value() == 300);
@@ -291,12 +298,14 @@ fun test_pool_deposit_redeem_shares() {
     scenario.next_tx(AUTHORITY);
     {
         let balance = create_balance_for_testing<SUI>(100);
+        let pool = pool_registry.get_pool_by_risk_ratio_mut<SUI>(TEST_POOL_RISK);
         pool.deposit_fee(sui::coin::from_balance(balance, scenario.ctx()));
         assert!(pool.get_cumulative_fees() == 200);
     };
 
     // validate user shares (share should be the same since deposited)
     {
+        let pool = pool_registry.get_pool_by_risk_ratio<SUI>(TEST_POOL_RISK);
         let shares_amount = pool.get_user_shares(USER_1);
         assert!(shares_amount == 100);
 
@@ -312,9 +321,17 @@ fun test_pool_deposit_redeem_shares() {
     // underlying = redeem_shares * total_reserves (400) / total_shares (150)
     scenario.next_tx(USER_1);
     {
+        let pool = pool_registry.get_pool_by_risk_ratio<SUI>(TEST_POOL_RISK);
         let shares_amount = pool.get_user_shares(USER_1);
-        let redeem_coin = pool.redeem<SUI>(&phase_info, shares_amount, scenario.ctx());
 
+        let redeem_coin = pool_registry.redeem<SUI>(
+            &phase_info,
+            TEST_POOL_RISK,
+            shares_amount,
+            scenario.ctx(),
+        );
+
+        let pool = pool_registry.get_pool_by_risk_ratio<SUI>(TEST_POOL_RISK);
         assert!(pool.get_user_shares(USER_1) == 0);
         assert!(redeem_coin.value() == 266);
 
@@ -328,9 +345,17 @@ fun test_pool_deposit_redeem_shares() {
     // Should able to redeem back with full shares
     scenario.next_tx(USER_2);
     {
+        let pool = pool_registry.get_pool_by_risk_ratio<SUI>(TEST_POOL_RISK);
         let shares_amount = pool.get_user_shares(USER_2);
-        let redeem_coin = pool.redeem<SUI>(&phase_info, shares_amount, scenario.ctx());
 
+        let redeem_coin = pool_registry.redeem<SUI>(
+            &phase_info,
+            TEST_POOL_RISK,
+            shares_amount,
+            scenario.ctx(),
+        );
+
+        let pool = pool_registry.get_pool_by_risk_ratio<SUI>(TEST_POOL_RISK);
         assert!(pool.get_user_shares(USER_2) == 0);
         assert!(redeem_coin.value() == 134);
 
@@ -342,42 +367,42 @@ fun test_pool_deposit_redeem_shares() {
     };
 
     test_scenario::return_shared(phase_info);
-    test_scenario::return_shared(pool_factory);
+    test_scenario::return_shared(pool_registry);
     clock.destroy_for_testing();
     scenario.end();
 }
 
 #[test]
 fun test_get_total_reserves_value() {
-    let (mut scenario, clock, phase_info, mut pool_factory) = build_pool_test_suite(
+    let (mut scenario, clock, phase_info, mut pool_registry) = build_pool_test_suite(
         AUTHORITY,
     );
 
     scenario.next_tx(USER_1);
     {
-        let pool = pool_factory.get_pool_by_risk_ratio_mut<SUI>(2000);
         let balance = create_balance_for_testing<SUI>(200);
-        pool.deposit<SUI>(
+        pool_registry.deposit<SUI>(
             &phase_info,
+            2000,
             sui::coin::from_balance(balance, scenario.ctx()),
             scenario.ctx(),
         );
 
-        let pool = pool_factory.get_pool_by_risk_ratio_mut<SUI>(5000);
         let balance = create_balance_for_testing<SUI>(500);
-        pool.deposit<SUI>(
+        pool_registry.deposit<SUI>(
             &phase_info,
+            5000,
             sui::coin::from_balance(balance, scenario.ctx()),
             scenario.ctx(),
         );
     };
 
     {
-        assert!(pool_factory.get_total_reserves_value<SUI>() == 700);
+        assert!(pool_registry.get_total_reserves_value<SUI>() == 700);
     };
 
     test_scenario::return_shared(phase_info);
-    test_scenario::return_shared(pool_factory);
+    test_scenario::return_shared(pool_registry);
     clock.destroy_for_testing();
     scenario.end();
 }
