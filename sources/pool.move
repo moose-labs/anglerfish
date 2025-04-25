@@ -6,7 +6,7 @@ use sui::bag::{Self, Bag};
 use sui::balance::Balance;
 use sui::coin::{Self, Coin, from_balance};
 use sui::table::{Self, Table};
-use sui::vec_set::{Self, VecSet};
+use sui::vec_map::{Self, VecMap};
 
 const ErrorTooSmallToMint: u64 = 1;
 const ErrorTooLargeToRedeem: u64 = 2;
@@ -25,7 +25,7 @@ public struct PoolCap has key, store {
 public struct PoolFactory has key {
     id: UID,
     /// The list of pool risk ratios that are created
-    pool_keys: VecSet<u64>,
+    pool_ids: VecMap<u64, address>,
     /// Mapping from pool id to pool object
     pools: Bag,
     /// Pool authorized creator
@@ -59,7 +59,7 @@ fun init(ctx: &mut TxContext) {
 
     transfer::share_object(PoolFactory {
         id: object::new(ctx),
-        pool_keys: vec_set::empty<u64>(),
+        pool_ids: vec_map::empty(),
         pools: bag::new(ctx),
         creator: object::id(&pool_cap),
     });
@@ -80,12 +80,16 @@ public fun create_pool<T>(
     ctx: &mut TxContext,
 ) {
     assert!(risk_ratio_bps <= MAX_RISK_RATIO_BPS, ErrorPoolRiskRatioTooHigh);
-    assert!(pool_factory.pool_keys.contains(&risk_ratio_bps) == false, ErrorPoolAlreadyCreated);
+    assert!(pool_factory.pool_ids.contains(&risk_ratio_bps) == false, ErrorPoolAlreadyCreated);
 
     phase_info.assert_settling_phase();
 
+    let pool_id = object::new(ctx);
+
+    pool_factory.pool_ids.insert(risk_ratio_bps, pool_id.to_address());
+
     let pool = Pool<T> {
-        id: object::new(ctx),
+        id: pool_id,
         reserves: sui::balance::zero<T>(),
         total_reserves_value: 0,
         total_shares: 0,
@@ -94,8 +98,6 @@ public fun create_pool<T>(
         user_shares: table::new<address, u64>(ctx),
         is_deposit_enabled: false,
     };
-
-    pool_factory.pool_keys.insert(risk_ratio_bps);
 
     bag::add(&mut pool_factory.pools, risk_ratio_bps, pool)
 }
@@ -158,15 +160,15 @@ public fun get_pool_by_risk_ratio_mut<T>(
     bag::borrow_mut(&mut self.pools, risk_ratio_bps)
 }
 
-public fun get_pool_risk_ratios(self: &PoolFactory): VecSet<u64> {
-    self.pool_keys
+public fun get_pool_risk_ratios(self: &PoolFactory): vector<u64> {
+    self.pool_ids.keys()
 }
 
 /// Pool Factory inner functions
 ///
 
 fun inner_get_pool_risk_ratios_with_len(self: &PoolFactory): (vector<u64>, u64) {
-    let pool_risk_ratios = self.get_pool_risk_ratios().into_keys();
+    let pool_risk_ratios = self.get_pool_risk_ratios();
     let pool_risk_ratios_len = pool_risk_ratios.length();
     (pool_risk_ratios, pool_risk_ratios_len)
 }

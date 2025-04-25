@@ -91,7 +91,7 @@ fun test_pool_can_only_created_by_authority() {
         // Pool factory getter
         {
             let pool_risk_ratios = pool_factory.get_pool_risk_ratios();
-            assert!(pool_risk_ratios.size() == 2);
+            assert!(pool_risk_ratios.length() == 2);
 
             let total_risk_ratio_bps = pool_factory.get_total_risk_ratio_bps();
             assert!(total_risk_ratio_bps == 15000);

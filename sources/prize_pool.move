@@ -373,7 +373,7 @@ fun inner_aggregate_prize_to_lounge<T>(
 
     let lounge = lounge_factory.get_lounge_number_mut<T>(lounge_number);
 
-    let risk_ratios = pool_factory.get_pool_risk_ratios().into_keys();
+    let risk_ratios = pool_factory.get_pool_risk_ratios();
     let risk_ratios_len = risk_ratios.length();
 
     let mut i = 0;
@@ -396,7 +396,7 @@ fun inner_distribute_fee_to_pools<T>(
     let reserves_value = reserves.value();
 
     let total_risk_ratio_bps = pool_factory.get_total_risk_ratio_bps();
-    let risk_ratios = pool_factory.get_pool_risk_ratios().into_keys();
+    let risk_ratios = pool_factory.get_pool_risk_ratios();
     let risk_ratios_len = risk_ratios.length();
 
     let mut i = 0;
