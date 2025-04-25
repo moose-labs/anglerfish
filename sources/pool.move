@@ -246,7 +246,19 @@ public fun redeem<T>(
     pool.inner_take_reserves_balance(redeem_value, ctx)
 }
 
-public fun withdraw_prize<T>(
+public(package) fun get_pool_by_risk_ratio_mut<T>(
+    self: &mut PoolRegistry,
+    risk_ratio_bps: u64,
+): &mut Pool<T> {
+    bag::borrow_mut(&mut self.pools, risk_ratio_bps)
+}
+
+public(package) fun deposit_fee<T>(self: &mut Pool<T>, fee_coin: Coin<T>) {
+    self.cumulative_fees = self.cumulative_fees + fee_coin.value();
+    self.inner_put_reserves_balance(fee_coin);
+}
+
+public(package) fun withdraw_prize<T>(
     _self: &PoolCap, // Enforce to use by pool cap capability
     pool_registry: &mut PoolRegistry,
     risk_ratio_bps: u64,
@@ -301,6 +313,7 @@ public fun get_user_shares<T>(self: &Pool<T>, user: address): u64 {
 }
 
 /// Inner functions
+///
 
 fun inner_put_reserves_balance<T>(self: &mut Pool<T>, coin: Coin<T>) {
     self.total_reserves_value = self.total_reserves_value + coin.value();
@@ -320,18 +333,13 @@ public fun assert_deposit_enabled<T>(self: &Pool<T>) {
     assert!(self.is_deposit_enabled, ErrorPoolDepositDisabled);
 }
 
-// === Test functions ===
+/// === Test functions ===
+///
 
 #[test_only]
-public fun get_pool_by_risk_ratio_mut<T>(
+public fun get_pool_by_risk_ratio_mut_for_testing<T>(
     self: &mut PoolRegistry,
     risk_ratio_bps: u64,
 ): &mut Pool<T> {
-    bag::borrow_mut(&mut self.pools, risk_ratio_bps)
-}
-
-#[test_only]
-public fun deposit_fee<T>(self: &mut Pool<T>, fee_coin: Coin<T>) {
-    self.cumulative_fees = self.cumulative_fees + fee_coin.value();
-    self.inner_put_reserves_balance(fee_coin);
+    get_pool_by_risk_ratio_mut(self, risk_ratio_bps)
 }
