@@ -178,9 +178,11 @@ fun inner_get_pool_risk_ratios_with_len(self: &PoolFactory): (vector<u64>, u64) 
 
 public fun set_deposit_enabled<T>(
     _self: &PoolCap, // Enforce to use by pool cap capability
-    pool: &mut Pool<T>,
+    pool_factory: &mut PoolFactory,
+    risk_ratio_bps: u64,
     enabled: bool,
 ) {
+    let pool = get_pool_by_risk_ratio_mut<T>(pool_factory, risk_ratio_bps);
     pool.is_deposit_enabled = enabled;
 }
 

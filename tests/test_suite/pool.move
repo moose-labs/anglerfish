@@ -26,12 +26,12 @@ public fun build_pool_test_suite(authority: address): (Scenario, Clock, PhaseInf
     pool_cap.create_pool<SUI>(&mut pool_factory, &phase_info, TEST_POOL_1_RISK, scenario.ctx());
     pool_cap.create_pool<SUI>(&mut pool_factory, &phase_info, TEST_POOL_2_RISK, scenario.ctx());
 
-    let pool = pool_factory.get_pool_by_risk_ratio_mut<SUI>(TEST_POOL_1_RISK);
-    pool_cap.set_deposit_enabled<SUI>(pool, true);
+    pool_cap.set_deposit_enabled<SUI>(&mut pool_factory, TEST_POOL_1_RISK, true);
+    let pool = pool_factory.get_pool_by_risk_ratio<SUI>(TEST_POOL_1_RISK);
     pool.assert_deposit_enabled();
 
-    let pool = pool_factory.get_pool_by_risk_ratio_mut<SUI>(TEST_POOL_2_RISK);
-    pool_cap.set_deposit_enabled<SUI>(pool, true);
+    pool_cap.set_deposit_enabled<SUI>(&mut pool_factory, TEST_POOL_2_RISK, true);
+    let pool = pool_factory.get_pool_by_risk_ratio<SUI>(TEST_POOL_2_RISK);
     pool.assert_deposit_enabled();
 
     scenario.return_to_sender(pool_cap);

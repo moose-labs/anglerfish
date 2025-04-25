@@ -80,11 +80,14 @@ fun test_pool_can_only_created_by_authority() {
 
         // Pool 5000
         {
-            let pool = pool_factory.get_pool_by_risk_ratio_mut<SUI>(5000);
+            let pool = pool_factory.get_pool_by_risk_ratio<SUI>(5000);
             assert!(pool.get_deposit_enabled() == false);
+        };
 
+        {
             // try enable depositing
-            pool_cap.set_deposit_enabled<SUI>(pool, true);
+            pool_cap.set_deposit_enabled<SUI>(&mut pool_factory, 5000, true);
+            let pool = pool_factory.get_pool_by_risk_ratio<SUI>(5000);
             assert!(pool.get_deposit_enabled());
         };
 
