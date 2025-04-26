@@ -103,7 +103,6 @@ public fun build_initialized_prize_pool_test_suite(
     // Initilize parameters for prize pool
     let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
 
-    prize_pool_cap.new_round_table_if_needed(&mut prize_pool, &phase_info, scenario.ctx());
     prize_pool_cap.set_pool_registry(&mut prize_pool, object::id(&pool_registry), scenario.ctx());
     prize_pool_cap.set_lounge_registry(
         &mut prize_pool,

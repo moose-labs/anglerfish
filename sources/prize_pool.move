@@ -130,16 +130,6 @@ public fun set_protocol_fee_bps(
     prize_pool.protocol_fee_bps = protocol_fee_bps;
 }
 
-public fun new_round_table_if_needed(
-    _self: &PrizePoolCap,
-    prize_pool: &mut PrizePool,
-    phase_info: &PhaseInfo,
-    ctx: &mut TxContext,
-) {
-    let current_round = phase_info.get_current_round();
-    prize_pool.inner_ensure_round_table_exists(current_round, ctx);
-}
-
 public fun claim_protocol_fee<T>(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
@@ -279,8 +269,12 @@ entry fun draw<T>(
     ctx: &mut TxContext,
 ) {
     phase_info.assert_drawing_phase();
+
     assert!(prize_pool.pool_registry.is_some(), ErrorInvalidPoolRegistry);
     assert!(prize_pool.lounge_registry.is_some(), ErrorInvalidLoungeRegistry);
+
+    let current_round = phase_info.get_current_round();
+    prize_pool.inner_ensure_round_table_exists(current_round, ctx);
 
     let prize_reserves_value = prize_pool.get_total_prize_reserves_value<T>(pool_registry);
     let lp_tickets = prize_reserves_value / prize_pool.price_per_ticket;
@@ -296,7 +290,6 @@ entry fun draw<T>(
     let winner_player = prize_pool.inner_find_ticket_winner_address(phase_info, ticket_number);
 
     // Store the winner in the current round
-    let current_round = phase_info.get_current_round();
     prize_pool.rounds.borrow_mut(current_round).set_winner(winner_player);
 
     // Instantly move to the Distributing phase

@@ -427,6 +427,108 @@ fun test_fee_distributions() {
 }
 
 #[test]
+fun test_draw_on_no_ticket_purchased() {
+    let (
+        mut scenario,
+        mut clock,
+        mut phase_info,
+        mut pool_registry,
+        mut lounge_registry,
+        mut prize_pool,
+    ) = build_initialized_prize_pool_test_suite(
+        AUTHORITY,
+    );
+
+    assert!(prize_pool.get_total_purchased_tickets(&phase_info) == 0);
+
+    // Forward phase to drawing
+    scenario.next_tx(AUTHORITY);
+    {
+        let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
+
+        clock.increment_for_testing(PHASE_DURATION);
+        phase_info_cap.next(&mut phase_info, &clock, scenario.ctx());
+
+        scenario.return_to_sender(phase_info_cap);
+    };
+
+    // Update randomness state
+    scenario.next_tx(@0x0);
+    {
+        let mut random = scenario.take_shared<Random>();
+        random.update_randomness_state_for_testing(
+            0,
+            x"3F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F", // will return ticket number 8982
+            scenario.ctx(),
+        );
+        test_scenario::return_shared(random);
+    };
+
+    // Draw the winner & settle the prize pool to the winner lounge
+    scenario.next_tx(AUTHORITY);
+    {
+        let random = scenario.take_shared<Random>();
+        let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
+        let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
+
+        prize_pool_cap.draw<SUI>(
+            &phase_info_cap,
+            &mut phase_info,
+            &mut prize_pool,
+            &pool_registry,
+            &random,
+            &clock,
+            scenario.ctx(),
+        );
+
+        // should automatically move from Drawing to Distributing phase
+        phase_info.assert_distributing_phase();
+
+        let pool_cap = scenario.take_from_sender<PoolCap>();
+        let lounge_cap = scenario.take_from_sender<LoungeCap>();
+
+        prize_pool_cap.distribute<SUI>(
+            &pool_cap,
+            &lounge_cap,
+            &phase_info_cap,
+            &mut phase_info,
+            &mut prize_pool,
+            &mut pool_registry,
+            &mut lounge_registry,
+            &clock,
+            scenario.ctx(),
+        );
+
+        // should automatically move from Distributing phase to Settling phase
+        phase_info.assert_settling_phase();
+
+        scenario.return_to_sender(pool_cap);
+        scenario.return_to_sender(lounge_cap);
+        scenario.return_to_sender(phase_info_cap);
+
+        scenario.return_to_sender(prize_pool_cap);
+        test_scenario::return_shared(random);
+    };
+
+    // Check variables
+    scenario.next_tx(AUTHORITY);
+    {
+        assert!(prize_pool.get_round(1).get_winner() == option::none());
+        assert!(lounge_registry.is_lounge_available(1) == false);
+        assert!(prize_pool.get_lp_fee_reserves_value<SUI>() == 0);
+        assert!(prize_pool.get_protocol_fee_reserves_value<SUI>() == 0);
+        assert!(prize_pool.get_treasury_reserves_value<SUI>() == 0);
+    };
+
+    test_scenario::return_shared(phase_info);
+    test_scenario::return_shared(pool_registry);
+    test_scenario::return_shared(lounge_registry);
+    test_scenario::return_shared(prize_pool);
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+#[test]
 fun test_player_win_scenario() {
     let (
         mut scenario,
@@ -690,7 +792,7 @@ fun test_lp_win_scenario() {
     };
 
     // Check the lounge created
-    scenario.next_tx(USER1);
+    scenario.next_tx(AUTHORITY);
     {
         assert!(lounge_registry.is_lounge_available(1) == false);
     };
