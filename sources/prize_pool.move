@@ -3,6 +3,7 @@ module red_ocean::prize_pool;
 use red_ocean::lounge::{LoungeCap, LoungeFactory};
 use red_ocean::phase::{PhaseInfo, PhaseInfoCap};
 use red_ocean::pool::{PoolRegistry, PoolCap};
+use red_ocean::round::{Self, Round};
 use red_ocean::ticket_calculator::calculate_total_ticket_with_fees;
 use sui::bag::{Self, Bag};
 use sui::balance::{Self, Balance};
@@ -10,26 +11,17 @@ use sui::clock::Clock;
 use sui::coin::{Self, Coin, from_balance};
 use sui::random::{Random, new_generator};
 use sui::table::{Self, Table};
-use sui::vec_set::{Self, VecSet};
 
 const ErrorMaximumNumberOfPlayersReached: u64 = 1;
 const ErrorInvalidPoolRegistry: u64 = 2;
-const ErrorPurchaseAmountTooLow: u64 = 3;
-const ErrorFeeAmountTooHigh: u64 = 4;
-const ErrorProtocolFeeAmountTooHigh: u64 = 5;
+const ErrorInvalidLoungeFactory: u64 = 3;
+const ErrorPurchaseAmountTooLow: u64 = 4;
+const ErrorFeeAmountTooHigh: u64 = 5;
+const ErrorProtocolFeeAmountTooHigh: u64 = 6;
 
 const TICKET_RESERVES_KEY: vector<u8> = b"ticket_reserves";
 const FEE_RESERVES_KEY: vector<u8> = b"fee_reserves";
 const PROTOCOL_FEE_RESERVES_KEY: vector<u8> = b"protocol_fee_reserves";
-
-public struct Round has store {
-    /// The table of players that contain the address and their purchased tickets
-    player_tickets: Table<address, u64>,
-    /// The list of unique players
-    players: VecSet<address>,
-    /// Winner address
-    winner: Option<address>,
-}
 
 public struct PrizePoolCap has key, store {
     id: UID,
@@ -184,12 +176,11 @@ public fun get_protocol_fee_bps(self: &PrizePool): u64 {
 
 public fun get_player_tickets(self: &PrizePool, phase_info: &PhaseInfo, player: address): u64 {
     let current_round = phase_info.get_current_round();
-    let round = self.rounds.borrow(current_round);
-    if (round.players.contains(&player)) {
-        *round.player_tickets.borrow(player)
-    } else {
-        0
-    }
+    if (!self.rounds.contains(current_round)) {
+        return 0
+    };
+
+    self.rounds.borrow(current_round).get_player_tickets(player)
 }
 
 /// Public views & functions
@@ -213,19 +204,15 @@ public fun get_protocol_fee_reserves_value<T>(self: &PrizePool): u64 {
 
 public fun get_total_purchased_tickets(self: &PrizePool, phase_info: &PhaseInfo): u64 {
     let current_round = phase_info.get_current_round();
-    let round = self.rounds.borrow(current_round);
-    let players = round.players.into_keys();
-    let total_players = round.players.size();
-
-    let mut i = 0;
-    let mut total_tickets = 0;
-    while (i < total_players) {
-        let player = players[i];
-        total_tickets = total_tickets + *round.player_tickets.borrow(player);
-        i = i + 1;
+    if (!self.rounds.contains(current_round)) {
+        return 0
     };
 
-    total_tickets
+    self.rounds.borrow(current_round).get_total_purchased_tickets()
+}
+
+public fun get_round(self: &PrizePool, round: u64): &Round {
+    self.rounds.borrow(round)
 }
 
 public fun purchase_ticket<T>(
@@ -235,6 +222,8 @@ public fun purchase_ticket<T>(
     ctx: &mut TxContext,
 ) {
     phase_info.assert_ticketing_phase();
+    assert!(self.pool_registry.is_some(), ErrorInvalidPoolRegistry);
+    assert!(self.lounge_factory.is_some(), ErrorInvalidLoungeFactory);
 
     // Check if the current round table already exists
     let current_round = phase_info.get_current_round();
@@ -266,15 +255,7 @@ public fun purchase_ticket<T>(
 
     // Check if the buyer already exists in the current round
     let buyer = tx_context::sender(ctx);
-    let round = self.rounds.borrow_mut(current_round);
-
-    if (round.players.contains(&buyer)) {
-        let current_participant = round.player_tickets.borrow_mut(buyer);
-        *current_participant = *current_participant + ticket_amount;
-    } else {
-        round.players.insert(buyer);
-        round.player_tickets.add(buyer, ticket_amount);
-    };
+    self.rounds.borrow_mut(current_round).add_player_ticket(buyer, ticket_amount);
 }
 
 entry fun draw<T>(
@@ -288,6 +269,8 @@ entry fun draw<T>(
     ctx: &mut TxContext,
 ) {
     phase_info.assert_drawing_phase();
+    assert!(prize_pool.pool_registry.is_some(), ErrorInvalidPoolRegistry);
+    assert!(prize_pool.lounge_factory.is_some(), ErrorInvalidLoungeFactory);
 
     let prize_reserves_value = prize_pool.get_total_prize_reserves_value<T>(pool_registry);
     let lp_tickets = prize_reserves_value / prize_pool.price_per_ticket;
@@ -298,18 +281,13 @@ entry fun draw<T>(
     );
 
     let mut generator = rand.new_generator(ctx);
-    let ticket_number = generator.generate_u64_in_range(1, lp_tickets_with_fee);
+    let ticket_number = generator.generate_u64_in_range(0, lp_tickets_with_fee);
 
     let winner_player = prize_pool.inner_find_ticket_winner_address(phase_info, ticket_number);
 
     // Store the winner in the current round
     let current_round = phase_info.get_current_round();
-    let round = prize_pool.rounds.borrow_mut(current_round);
-    if (winner_player.is_some()) {
-        round.winner = winner_player;
-    } else {
-        round.winner = option::none();
-    };
+    prize_pool.rounds.borrow_mut(current_round).set_winner(winner_player);
 
     // Instantly move to the Settling phase
     phase_info_cap.next(phase_info, clock, ctx);
@@ -332,8 +310,8 @@ public fun settle<T>(
     let current_round = phase_info.get_current_round();
     let round = prize_pool.rounds.borrow_mut(current_round);
 
-    if (round.winner.is_some()) {
-        let winner = round.winner.extract();
+    if (round.get_winner().is_some()) {
+        let winner = round.get_winner().extract();
         let lounge_number = lounge_cap.create_lounge<T>(lounge_factory, current_round, winner, ctx);
         prize_pool.inner_aggregate_prize_to_lounge<T>(
             phase_info,
@@ -483,11 +461,7 @@ fun inner_ensure_round_table_exists(self: &mut PrizePool, current_round: u64, ct
             .rounds
             .add(
                 current_round,
-                Round {
-                    player_tickets: table::new(ctx),
-                    players: vec_set::empty<address>(),
-                    winner: option::none(),
-                },
+                round::new(ctx),
             );
     };
 }
@@ -498,26 +472,7 @@ fun inner_find_ticket_winner_address(
     ticket_number: u64,
 ): Option<address> {
     let current_round = phase_info.get_current_round();
-    let round = prize_pool.rounds.borrow(current_round);
-
-    let mut i = 0;
-    let mut cumulative_tickets = 0;
-    let mut winner = option::none();
-
-    let players = round.players.into_keys();
-    let total_players = round.players.size();
-    while (i < total_players) {
-        let player = players[i];
-        let ticket_count = *round.player_tickets.borrow(player);
-        cumulative_tickets = cumulative_tickets + ticket_count;
-        if (ticket_number < cumulative_tickets) {
-            winner = option::some(player);
-            break
-        };
-        i = i + 1;
-    };
-
-    winner
+    prize_pool.rounds.borrow(current_round).find_ticket_winner_address(ticket_number)
 }
 
 /// Assertions
@@ -529,13 +484,13 @@ fun assert_valid_pool_registry(self: &PrizePool, pool_registry: &PoolRegistry) {
 }
 
 fun assert_valid_longe_factory(self: &PrizePool, lounge_factory: &LoungeFactory) {
-    assert!(self.lounge_factory.is_some(), ErrorInvalidPoolRegistry);
-    assert!(object::id(lounge_factory) == self.lounge_factory.borrow(), ErrorInvalidPoolRegistry);
+    assert!(self.lounge_factory.is_some(), ErrorInvalidLoungeFactory);
+    assert!(object::id(lounge_factory) == self.lounge_factory.borrow(), ErrorInvalidLoungeFactory);
 }
 
 fun assert_max_players(self: &PrizePool, phase_info: &PhaseInfo) {
     let current_round = phase_info.get_current_round();
-    let current_player_count = self.rounds.borrow(current_round).players.size();
+    let current_player_count = self.rounds.borrow(current_round).get_number_of_players();
     assert!(current_player_count < self.max_players, ErrorMaximumNumberOfPlayersReached);
 }
 

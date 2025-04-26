@@ -503,6 +503,7 @@ fun test_player_win_scenario() {
             scenario.ctx(),
         );
 
+        // should still in settling phase
         phase_info.assert_settling_phase();
 
         scenario.return_to_sender(pool_cap);
@@ -510,6 +511,12 @@ fun test_player_win_scenario() {
 
         scenario.return_to_sender(prize_pool_cap);
         test_scenario::return_shared(random);
+    };
+
+    // Check winner record still the same
+    scenario.next_tx(AUTHORITY);
+    {
+        assert!(prize_pool.get_round(1).get_winner() == option::some(USER1));
     };
 
     // Check the lounge created
@@ -638,6 +645,12 @@ fun test_lp_win_scenario() {
 
         scenario.return_to_sender(prize_pool_cap);
         test_scenario::return_shared(random);
+    };
+
+    // Check winner record still the same
+    scenario.next_tx(AUTHORITY);
+    {
+        assert!(prize_pool.get_round(1).get_winner() == option::none());
     };
 
     // Check the lounge created
