@@ -15,6 +15,7 @@ use sui::coin::from_balance;
 use sui::random::Random;
 use sui::sui::SUI;
 use sui::test_scenario;
+use sui::test_utils;
 
 const AUTHORITY: address = @0xAAA;
 const UNAUTHORIZED: address = @0xFFF;
@@ -145,13 +146,13 @@ fun test_set_initialize_parameters() {
     {
         let pool_cap = scenario.take_from_sender<PrizePoolCap>();
 
-        assert!(prize_pool.get_fee_bps() == 2500); // default value
-        pool_cap.set_fee_bps(
+        assert!(prize_pool.get_lp_fee_bps() == 2500); // default value
+        pool_cap.set_lp_fee_bps(
             &mut prize_pool,
             5000,
             scenario.ctx(),
         );
-        assert!(prize_pool.get_fee_bps() == 5000);
+        assert!(prize_pool.get_lp_fee_bps() == 5000);
 
         scenario.return_to_sender(pool_cap);
     };
@@ -399,9 +400,9 @@ fun test_fee_distributions() {
         assert!(prize_pool.get_player_tickets(&phase_info, USER1) == 10);
         assert!(prize_pool.get_total_purchased_tickets(&phase_info) == 10);
 
-        assert!(prize_pool.get_fee_reserves_value<SUI>() == 250); // 25% of 1000
+        assert!(prize_pool.get_lp_fee_reserves_value<SUI>() == 250); // 25% of 1000
         assert!(prize_pool.get_protocol_fee_reserves_value<SUI>() == 50); // 5% of 1000
-        assert!(prize_pool.get_ticket_reserves_value<SUI>() == 1000 - 250 - 50); // 1000 - fee - protocol fee
+        assert!(prize_pool.get_treasury_reserves_value<SUI>() == 1000 - 250 - 50); // 1000 - fee - protocol fee
     };
 
     scenario.next_tx(USER2);
@@ -412,9 +413,9 @@ fun test_fee_distributions() {
         assert!(prize_pool.get_player_tickets(&phase_info, USER2) == 10);
         assert!(prize_pool.get_total_purchased_tickets(&phase_info) == 20);
 
-        assert!(prize_pool.get_fee_reserves_value<SUI>() == 500); // 25% of 2000
+        assert!(prize_pool.get_lp_fee_reserves_value<SUI>() == 500); // 25% of 2000
         assert!(prize_pool.get_protocol_fee_reserves_value<SUI>() == 100); // 5% of 2000
-        assert!(prize_pool.get_ticket_reserves_value<SUI>() == 2000 - 500 - 100); // 2000 - fee - protocol fee
+        assert!(prize_pool.get_treasury_reserves_value<SUI>() == 2000 - 500 - 100); // 2000 - fee - protocol fee
     };
 
     test_scenario::return_shared(phase_info);
@@ -448,9 +449,9 @@ fun test_player_win_scenario() {
         prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
         assert!(prize_pool.get_player_tickets(&phase_info, USER1) == 10000);
 
-        assert!(prize_pool.get_fee_reserves_value<SUI>() == 250000);
+        assert!(prize_pool.get_lp_fee_reserves_value<SUI>() == 250000);
         assert!(prize_pool.get_protocol_fee_reserves_value<SUI>() == 50000);
-        assert!(prize_pool.get_ticket_reserves_value<SUI>() == 1000000 - 250000 - 50000);
+        assert!(prize_pool.get_treasury_reserves_value<SUI>() == 1000000 - 250000 - 50000);
     };
 
     // Forward phase to drawing
@@ -531,7 +532,30 @@ fun test_player_win_scenario() {
         prize_coin.destroy_for_testing();
     };
 
-    // TVL should decrease and prize reserves changes
+    // Check the fee distribution
+    scenario.next_tx(AUTHORITY);
+    {
+        let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
+        let protocol_fee_coin = prize_pool_cap.claim_protocol_fee<SUI>(
+            &mut prize_pool,
+            &phase_info,
+            scenario.ctx(),
+        );
+        assert!(protocol_fee_coin.value() == 50000);
+
+        let treasury_fee_coin = prize_pool_cap.claim_treasury_reserve<SUI>(
+            &mut prize_pool,
+            &phase_info,
+            scenario.ctx(),
+        );
+        assert!(treasury_fee_coin.value() == 700000);
+
+        test_utils::destroy(protocol_fee_coin);
+        test_utils::destroy(treasury_fee_coin);
+        scenario.return_to_sender(prize_pool_cap);
+    };
+
+    // Check reserves and prize after settled
     {
         // Liquidity on the pools before settling
         // - 2m with 20% risk (prize = 200_000 per user)
@@ -583,9 +607,9 @@ fun test_lp_win_scenario() {
         prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
         assert!(prize_pool.get_player_tickets(&phase_info, USER1) == 10000);
 
-        assert!(prize_pool.get_fee_reserves_value<SUI>() == 250000);
+        assert!(prize_pool.get_lp_fee_reserves_value<SUI>() == 250000);
         assert!(prize_pool.get_protocol_fee_reserves_value<SUI>() == 50000);
-        assert!(prize_pool.get_ticket_reserves_value<SUI>() == 1000000 - 250000 - 50000);
+        assert!(prize_pool.get_treasury_reserves_value<SUI>() == 1000000 - 250000 - 50000);
     };
 
     // Forward phase to drawing
@@ -659,6 +683,29 @@ fun test_lp_win_scenario() {
         assert!(lounge_factory.is_lounge_available(1) == false);
     };
 
+    // Check the fee distribution
+    scenario.next_tx(AUTHORITY);
+    {
+        let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
+        let protocol_fee_coin = prize_pool_cap.claim_protocol_fee<SUI>(
+            &mut prize_pool,
+            &phase_info,
+            scenario.ctx(),
+        );
+        assert!(protocol_fee_coin.value() == 50000);
+
+        let treasury_fee_coin = prize_pool_cap.claim_treasury_reserve<SUI>(
+            &mut prize_pool,
+            &phase_info,
+            scenario.ctx(),
+        );
+        assert!(treasury_fee_coin.value() == 700000);
+
+        test_utils::destroy(protocol_fee_coin);
+        test_utils::destroy(treasury_fee_coin);
+        scenario.return_to_sender(prize_pool_cap);
+    };
+
     // TVL should increase and prize reserves changes
     {
         // Liquidity on the pools before settling
@@ -671,20 +718,13 @@ fun test_lp_win_scenario() {
         // Distributed to the pools
         // 20% pool get = 71428 (20/(20+50)*250_000)
         // 50% pool get = 178571 (50/(20+50)*250_000)
-
-        // Total ticket fee = 700_000
-        // Distributed to the pools
-        // 20% pool get = 200000 (20/(20+50)*700_000)
-        // 50% pool get = 500000 (50/(20+50)*700_000)
-        assert!(
-            pool_factory.get_total_reserves_value<SUI>() == 6000000 + 71428 + 178571 + 200000 + 500000,
-        );
+        assert!(pool_factory.get_total_reserves_value<SUI>() == 6000000 + 71428 + 178571);
 
         // New prize reserves
-        // 20% pool reserves = (2_000_000 + 71428 + 200_000) * 20% = 454_285
-        // 50% pool reserves = (4_000_000 + 178571 + 500_000) * 50% = 2_339_285
-        // Total prize reserves = 454_285 + 2_339_285 = 2793570
-        assert!(pool_factory.get_total_prize_reserves_value<SUI>() == 2793570);
+        // 20% pool reserves = (2_000_000 + 71428) * 20% = 414_285
+        // 50% pool reserves = (4_000_000 + 178571) * 50% = 2_089_285
+        // Total prize reserves = 414_285 + 2_089_285 = 2_503_570
+        assert!(pool_factory.get_total_prize_reserves_value<SUI>() == 2503570);
     };
 
     test_scenario::return_shared(phase_info);

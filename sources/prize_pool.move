@@ -16,11 +16,11 @@ const ErrorMaximumNumberOfPlayersReached: u64 = 1;
 const ErrorInvalidPoolRegistry: u64 = 2;
 const ErrorInvalidLoungeFactory: u64 = 3;
 const ErrorPurchaseAmountTooLow: u64 = 4;
-const ErrorFeeAmountTooHigh: u64 = 5;
+const ErrorLpFeeAmountTooHigh: u64 = 5;
 const ErrorProtocolFeeAmountTooHigh: u64 = 6;
 
-const TICKET_RESERVES_KEY: vector<u8> = b"ticket_reserves";
-const FEE_RESERVES_KEY: vector<u8> = b"fee_reserves";
+const TREASURY_RESERVES_KEY: vector<u8> = b"treasury_reserves";
+const LP_FEE_RESERVES_KEY: vector<u8> = b"lp_fee_reserves";
 const PROTOCOL_FEE_RESERVES_KEY: vector<u8> = b"protocol_fee_reserves";
 
 public struct PrizePoolCap has key, store {
@@ -37,8 +37,8 @@ public struct PrizePool has key {
     max_players: u64,
     /// The ticket price based on unit of the pool
     price_per_ticket: u64,
-    /// The purchased ticket fees in basis points
-    fee_bps: u64,
+    /// The prize provider fees in basis points
+    lp_fee_bps: u64,
     /// The protocol fee in basis points
     protocol_fee_bps: u64,
     /// The reserves bag that hold the purchased tickets, fees, and protocol fees
@@ -62,7 +62,7 @@ fun init(ctx: &mut TxContext) {
         lounge_factory: option::none(),
         max_players: 0,
         price_per_ticket: 0,
-        fee_bps: 2500,
+        lp_fee_bps: 2500,
         protocol_fee_bps: 500,
         reserves: bag::new(ctx),
         rounds: table::new(ctx),
@@ -110,14 +110,14 @@ public fun set_price_per_ticket(
     prize_pool.price_per_ticket = price_per_ticket;
 }
 
-public fun set_fee_bps(
+public fun set_lp_fee_bps(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
-    fee_bps: u64,
+    lp_fee_bps: u64,
     _ctx: &mut TxContext,
 ) {
-    assert!(fee_bps < 6000, ErrorFeeAmountTooHigh);
-    prize_pool.fee_bps = fee_bps;
+    assert!(lp_fee_bps < 6000, ErrorLpFeeAmountTooHigh);
+    prize_pool.lp_fee_bps = lp_fee_bps;
 }
 
 public fun set_protocol_fee_bps(
@@ -143,10 +143,24 @@ public fun new_round_table_if_needed(
 public fun claim_protocol_fee<T>(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
+    phase_info: &PhaseInfo,
     ctx: &mut TxContext,
 ): Coin<T> {
+    phase_info.assert_settling_phase();
     let protocol_fee_reserves = prize_pool.inner_get_protocol_fee_reserves_balance_mut<T>();
     let fee_coin = from_balance(protocol_fee_reserves.withdraw_all(), ctx);
+    fee_coin
+}
+
+public fun claim_treasury_reserve<T>(
+    _self: &PrizePoolCap,
+    prize_pool: &mut PrizePool,
+    phase_info: &PhaseInfo,
+    ctx: &mut TxContext,
+): Coin<T> {
+    phase_info.assert_settling_phase();
+    let reserves = prize_pool.inner_get_treasury_reserves_balance_mut<T>();
+    let fee_coin = from_balance(reserves.withdraw_all(), ctx);
     fee_coin
 }
 
@@ -166,8 +180,8 @@ public fun get_price_per_ticket(self: &PrizePool): u64 {
     self.price_per_ticket
 }
 
-public fun get_fee_bps(self: &PrizePool): u64 {
-    self.fee_bps
+public fun get_lp_fee_bps(self: &PrizePool): u64 {
+    self.lp_fee_bps
 }
 
 public fun get_protocol_fee_bps(self: &PrizePool): u64 {
@@ -190,12 +204,12 @@ public fun get_total_prize_reserves_value<T>(_self: &PrizePool, pool_registry: &
     pool_registry.get_total_prize_reserves_value<T>()
 }
 
-public fun get_ticket_reserves_value<T>(self: &PrizePool): u64 {
-    self.inner_get_ticket_reserves_balance_value<T>()
+public fun get_treasury_reserves_value<T>(self: &PrizePool): u64 {
+    self.inner_get_treasury_reserves_balance_value<T>()
 }
 
-public fun get_fee_reserves_value<T>(self: &PrizePool): u64 {
-    self.inner_get_fee_reserves_balance_value<T>()
+public fun get_lp_fee_reserves_value<T>(self: &PrizePool): u64 {
+    self.inner_get_lp_fee_reserves_balance_value<T>()
 }
 
 public fun get_protocol_fee_reserves_value<T>(self: &PrizePool): u64 {
@@ -239,19 +253,19 @@ public fun purchase_ticket<T>(
 
     let mut purchase_coin = purchase_coin;
 
-    // Transfer fee coin to fee reserves
-    let fee_amount = self.inner_get_fee_amount(purchase_value);
-    let fee_reserves = self.inner_get_fee_reserves_balance_mut<T>();
-    coin::put(fee_reserves, purchase_coin.split(fee_amount, ctx));
+    // Transfer fee coin to lp fee reserves
+    let lp_fee_amount = self.inner_get_lp_fee_amount(purchase_value);
+    let lp_fee_reserves = self.inner_get_lp_fee_reserves_balance_mut<T>();
+    coin::put(lp_fee_reserves, purchase_coin.split(lp_fee_amount, ctx));
 
     // Transfer protocol fee coin to protocol fee reserves
     let protocol_fee_amount = self.inner_get_protocol_fee_amount(purchase_value);
     let protocol_fee_reserves = self.inner_get_protocol_fee_reserves_balance_mut<T>();
     coin::put(protocol_fee_reserves, purchase_coin.split(protocol_fee_amount, ctx));
 
-    // Transfer ticket coin to ticket reserves
-    let ticket_reserves = self.inner_get_ticket_reserves_balance_mut<T>();
-    coin::put(ticket_reserves, purchase_coin);
+    // Transfer ticket coin to treasury reserves
+    let treasury_reserves = self.inner_get_treasury_reserves_balance_mut<T>();
+    coin::put(treasury_reserves, purchase_coin);
 
     // Check if the buyer already exists in the current round
     let buyer = tx_context::sender(ctx);
@@ -274,7 +288,7 @@ entry fun draw<T>(
 
     let prize_reserves_value = prize_pool.get_total_prize_reserves_value<T>(pool_registry);
     let lp_tickets = prize_reserves_value / prize_pool.price_per_ticket;
-    let total_fee_bps = prize_pool.fee_bps + prize_pool.protocol_fee_bps;
+    let total_fee_bps = prize_pool.lp_fee_bps + prize_pool.protocol_fee_bps;
     let lp_tickets_with_fee = calculate_total_ticket_with_fees(
         lp_tickets,
         total_fee_bps,
@@ -321,14 +335,9 @@ public fun settle<T>(
             lounge_number,
             ctx,
         );
-    } else {
-        // distribute ticket reserves to the pools
-        let ticket_reserves = prize_pool.inner_get_ticket_reserves_balance_mut<T>();
-        inner_distribute_fee_to_pools<T>(phase_info, pool_registry, ticket_reserves, ctx);
     };
 
-    // distribute fees reserves to the pools
-    let fee_reserves = prize_pool.inner_get_fee_reserves_balance_mut<T>();
+    let fee_reserves = prize_pool.inner_get_lp_fee_reserves_balance_mut<T>();
     inner_distribute_fee_to_pools<T>(phase_info, pool_registry, fee_reserves, ctx);
 
     // We create round table for the next round
@@ -400,34 +409,34 @@ fun inner_cal_fee_for_risk_ratio(
     fee_for_pool
 }
 
-fun inner_get_ticket_reserves_balance_value<T>(self: &PrizePool): u64 {
-    if (!self.reserves.contains(TICKET_RESERVES_KEY)) {
+fun inner_get_treasury_reserves_balance_value<T>(self: &PrizePool): u64 {
+    if (!self.reserves.contains(TREASURY_RESERVES_KEY)) {
         0
     } else {
-        self.reserves.borrow<vector<u8>, Balance<T>>(TICKET_RESERVES_KEY).value()
+        self.reserves.borrow<vector<u8>, Balance<T>>(TREASURY_RESERVES_KEY).value()
     }
 }
 
-fun inner_get_ticket_reserves_balance_mut<T>(self: &mut PrizePool): &mut Balance<T> {
-    if (!self.reserves.contains(TICKET_RESERVES_KEY)) {
-        self.reserves.add(TICKET_RESERVES_KEY, balance::zero<T>());
+fun inner_get_treasury_reserves_balance_mut<T>(self: &mut PrizePool): &mut Balance<T> {
+    if (!self.reserves.contains(TREASURY_RESERVES_KEY)) {
+        self.reserves.add(TREASURY_RESERVES_KEY, balance::zero<T>());
     };
-    self.reserves.borrow_mut<vector<u8>, Balance<T>>(TICKET_RESERVES_KEY)
+    self.reserves.borrow_mut<vector<u8>, Balance<T>>(TREASURY_RESERVES_KEY)
 }
 
-fun inner_get_fee_reserves_balance_value<T>(self: &PrizePool): u64 {
-    if (!self.reserves.contains(FEE_RESERVES_KEY)) {
+fun inner_get_lp_fee_reserves_balance_value<T>(self: &PrizePool): u64 {
+    if (!self.reserves.contains(LP_FEE_RESERVES_KEY)) {
         0
     } else {
-        self.reserves.borrow<vector<u8>, Balance<T>>(FEE_RESERVES_KEY).value()
+        self.reserves.borrow<vector<u8>, Balance<T>>(LP_FEE_RESERVES_KEY).value()
     }
 }
 
-fun inner_get_fee_reserves_balance_mut<T>(self: &mut PrizePool): &mut Balance<T> {
-    if (!self.reserves.contains(FEE_RESERVES_KEY)) {
-        self.reserves.add(FEE_RESERVES_KEY, balance::zero<T>());
+fun inner_get_lp_fee_reserves_balance_mut<T>(self: &mut PrizePool): &mut Balance<T> {
+    if (!self.reserves.contains(LP_FEE_RESERVES_KEY)) {
+        self.reserves.add(LP_FEE_RESERVES_KEY, balance::zero<T>());
     };
-    self.reserves.borrow_mut<vector<u8>, Balance<T>>(FEE_RESERVES_KEY)
+    self.reserves.borrow_mut<vector<u8>, Balance<T>>(LP_FEE_RESERVES_KEY)
 }
 
 fun inner_get_protocol_fee_reserves_balance_value<T>(self: &PrizePool): u64 {
@@ -445,9 +454,9 @@ fun inner_get_protocol_fee_reserves_balance_mut<T>(self: &mut PrizePool): &mut B
     self.reserves.borrow_mut<vector<u8>, Balance<T>>(PROTOCOL_FEE_RESERVES_KEY)
 }
 
-fun inner_get_fee_amount(self: &PrizePool, purchased_value: u64): u64 {
-    let fee_amount = purchased_value * self.fee_bps / 10000;
-    fee_amount
+fun inner_get_lp_fee_amount(self: &PrizePool, purchased_value: u64): u64 {
+    let lp_fee_amount = purchased_value * self.lp_fee_bps / 10000;
+    lp_fee_amount
 }
 
 fun inner_get_protocol_fee_amount(self: &PrizePool, purchased_value: u64): u64 {

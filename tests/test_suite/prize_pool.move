@@ -112,7 +112,7 @@ public fun build_initialized_prize_pool_test_suite(
         PRIZE_POOL_PRICE_PER_TICKET,
         scenario.ctx(),
     );
-    prize_pool_cap.set_fee_bps(&mut prize_pool, PRIZE_POOL_FEE_BPS, scenario.ctx());
+    prize_pool_cap.set_lp_fee_bps(&mut prize_pool, PRIZE_POOL_FEE_BPS, scenario.ctx());
     prize_pool_cap.set_protocol_fee_bps(
         &mut prize_pool,
         PRIZE_POOL_PROTOCOL_FEE_BPS,
