@@ -2,7 +2,7 @@ module red_ocean::lounge;
 
 use sui::bag::{Self, Bag};
 use sui::balance::{Self, Balance};
-use sui::coin::{Self, Coin};
+use sui::coin::{Self, Coin, from_balance};
 
 const ErrorUnauthorized: u64 = 0;
 const ErrorRecipientCannotBeZero: u64 = 1;
@@ -74,17 +74,13 @@ public fun is_lounge_available(lounge_registry: &LoungeRegistry, lounge_number: 
     lounge_registry.lounges.contains(lounge_number)
 }
 
-public fun claim<T>(
-    self: &mut LoungeRegistry,
-    lounge_number: u64,
-    ctx: &mut TxContext,
-): Balance<T> {
+public fun claim<T>(self: &mut LoungeRegistry, lounge_number: u64, ctx: &mut TxContext): Coin<T> {
     assert!(self.is_lounge_available(lounge_number), ErrorNotAvailableLounge);
 
     let lounge = self.inner_get_lounge_number_mut(lounge_number);
 
     assert!(lounge.recipient == ctx.sender(), ErrorUnauthorized);
-    lounge.reserves.withdraw_all()
+    from_balance(lounge.reserves.withdraw_all(), ctx)
 }
 
 public fun add_reserves<T>(self: &mut LoungeRegistry, lounge_number: u64, coin: Coin<T>) {

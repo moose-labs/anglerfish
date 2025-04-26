@@ -7,6 +7,7 @@ use sui::balance::create_for_testing as create_balance_for_testing;
 use sui::coin::from_balance;
 use sui::sui::SUI;
 use sui::test_scenario;
+use sui::test_utils;
 
 const AUTHORITY: address = @0xAAA;
 const UNAUTHORIZED: address = @0xFFF;
@@ -134,7 +135,7 @@ fun test_lounge_cannot_claim_by_unauthorized() {
     {
         // Even though the lounge is transferred to unauthorized recipient, it should claimable by the original recipient
         let claimed_coin = lounge_registry.claim<SUI>(0, scenario.ctx());
-        claimed_coin.destroy_for_testing();
+        test_utils::destroy(claimed_coin);
     };
 
     test_scenario::return_shared(phase_info);
@@ -179,9 +180,9 @@ fun test_lounge_can_claim_by_recipient() {
 
     scenario.next_tx(recipient);
     {
-        let claimed_balance = lounge_registry.claim<SUI>(0, scenario.ctx());
-        assert!(claimed_balance.value() == claim_value);
-        claimed_balance.destroy_for_testing();
+        let claimed_coin = lounge_registry.claim<SUI>(0, scenario.ctx());
+        assert!(claimed_coin.value() == claim_value);
+        test_utils::destroy(claimed_coin);
     };
 
     test_scenario::return_shared(phase_info);

@@ -814,7 +814,8 @@ fun test_player_win_scenario() {
 
         let prize_coin = lounge_registry.claim<SUI>(1, scenario.ctx());
         assert!(prize_coin.value() == 2400000);
-        prize_coin.destroy_for_testing();
+
+        test_utils::destroy(prize_coin);
     };
 
     // Check the fee distribution
