@@ -74,7 +74,7 @@ fun test_set_initialize_parameters() {
         clock,
         phase_info,
         pool_factory,
-        lounge_factory,
+        lounge_registry,
         mut prize_pool,
     ) = build_prize_pool_test_suite(
         AUTHORITY,
@@ -98,13 +98,13 @@ fun test_set_initialize_parameters() {
         let pool_cap = scenario.take_from_sender<PrizePoolCap>();
 
         let lounge_id = object::id_from_address(@0x100);
-        assert!(prize_pool.get_lounge_factory().is_none());
-        pool_cap.set_lounge_factory(
+        assert!(prize_pool.get_lounge_registry().is_none());
+        pool_cap.set_lounge_registry(
             &mut prize_pool,
             lounge_id,
             scenario.ctx(),
         );
-        assert!(prize_pool.get_lounge_factory().borrow() == lounge_id);
+        assert!(prize_pool.get_lounge_registry().borrow() == lounge_id);
 
         scenario.return_to_sender(pool_cap);
     };
@@ -175,7 +175,7 @@ fun test_set_initialize_parameters() {
 
     test_scenario::return_shared(phase_info);
     test_scenario::return_shared(pool_factory);
-    test_scenario::return_shared(lounge_factory);
+    test_scenario::return_shared(lounge_registry);
     test_scenario::return_shared(prize_pool);
     clock.destroy_for_testing();
     scenario.end();
@@ -213,7 +213,7 @@ fun test_cannot_purchase_ticket_outside_ticketing_phase() {
         mut clock,
         mut phase_info,
         pool_factory,
-        lounge_factory,
+        lounge_registry,
         mut prize_pool,
     ) = build_initialized_prize_pool_test_suite(
         AUTHORITY,
@@ -238,7 +238,7 @@ fun test_cannot_purchase_ticket_outside_ticketing_phase() {
 
     test_scenario::return_shared(phase_info);
     test_scenario::return_shared(pool_factory);
-    test_scenario::return_shared(lounge_factory);
+    test_scenario::return_shared(lounge_registry);
     test_scenario::return_shared(prize_pool);
     clock.destroy_for_testing();
     scenario.end();
@@ -252,7 +252,7 @@ fun test_cannot_purchase_ticket_while_pool_reached_max_players() {
         clock,
         phase_info,
         pool_factory,
-        lounge_factory,
+        lounge_registry,
         mut prize_pool,
     ) = build_initialized_prize_pool_test_suite(
         AUTHORITY,
@@ -282,7 +282,7 @@ fun test_cannot_purchase_ticket_while_pool_reached_max_players() {
 
     test_scenario::return_shared(phase_info);
     test_scenario::return_shared(pool_factory);
-    test_scenario::return_shared(lounge_factory);
+    test_scenario::return_shared(lounge_registry);
     test_scenario::return_shared(prize_pool);
     clock.destroy_for_testing();
     scenario.end();
@@ -296,7 +296,7 @@ fun test_cannot_purchase_ticket_with_zero_value() {
         clock,
         phase_info,
         pool_factory,
-        lounge_factory,
+        lounge_registry,
         mut prize_pool,
     ) = build_initialized_prize_pool_test_suite(
         AUTHORITY,
@@ -310,7 +310,7 @@ fun test_cannot_purchase_ticket_with_zero_value() {
 
     test_scenario::return_shared(phase_info);
     test_scenario::return_shared(pool_factory);
-    test_scenario::return_shared(lounge_factory);
+    test_scenario::return_shared(lounge_registry);
     test_scenario::return_shared(prize_pool);
     clock.destroy_for_testing();
     scenario.end();
@@ -324,7 +324,7 @@ fun test_cannot_purchase_ticket_with_zero_ticket() {
         clock,
         phase_info,
         pool_factory,
-        lounge_factory,
+        lounge_registry,
         mut prize_pool,
     ) = build_initialized_prize_pool_test_suite(
         AUTHORITY,
@@ -340,7 +340,7 @@ fun test_cannot_purchase_ticket_with_zero_ticket() {
 
     test_scenario::return_shared(phase_info);
     test_scenario::return_shared(pool_factory);
-    test_scenario::return_shared(lounge_factory);
+    test_scenario::return_shared(lounge_registry);
     test_scenario::return_shared(prize_pool);
     clock.destroy_for_testing();
     scenario.end();
@@ -353,7 +353,7 @@ fun test_purchase_tickets_should_floored_to_ticket_price() {
         clock,
         phase_info,
         pool_factory,
-        lounge_factory,
+        lounge_registry,
         mut prize_pool,
     ) = build_initialized_prize_pool_test_suite(
         AUTHORITY,
@@ -371,7 +371,7 @@ fun test_purchase_tickets_should_floored_to_ticket_price() {
 
     test_scenario::return_shared(phase_info);
     test_scenario::return_shared(pool_factory);
-    test_scenario::return_shared(lounge_factory);
+    test_scenario::return_shared(lounge_registry);
     test_scenario::return_shared(prize_pool);
     clock.destroy_for_testing();
     scenario.end();
@@ -384,7 +384,7 @@ fun test_fee_distributions() {
         clock,
         phase_info,
         pool_factory,
-        lounge_factory,
+        lounge_registry,
         mut prize_pool,
     ) = build_initialized_prize_pool_test_suite(
         AUTHORITY,
@@ -420,7 +420,7 @@ fun test_fee_distributions() {
 
     test_scenario::return_shared(phase_info);
     test_scenario::return_shared(pool_factory);
-    test_scenario::return_shared(lounge_factory);
+    test_scenario::return_shared(lounge_registry);
     test_scenario::return_shared(prize_pool);
     clock.destroy_for_testing();
     scenario.end();
@@ -433,7 +433,7 @@ fun test_player_win_scenario() {
         mut clock,
         mut phase_info,
         mut pool_factory,
-        mut lounge_factory,
+        mut lounge_registry,
         mut prize_pool,
     ) = build_initialized_prize_pool_test_suite(
         AUTHORITY,
@@ -500,7 +500,7 @@ fun test_player_win_scenario() {
             &phase_info,
             &mut prize_pool,
             &mut pool_factory,
-            &mut lounge_factory,
+            &mut lounge_registry,
             scenario.ctx(),
         );
 
@@ -523,11 +523,11 @@ fun test_player_win_scenario() {
     // Check the lounge created
     scenario.next_tx(USER1);
     {
-        let lounge = lounge_factory.get_lounge_number_mut<SUI>(1);
+        let lounge = lounge_registry.get_lounge_number<SUI>(1);
         assert!(lounge.get_recipient() == USER1);
         assert!(lounge.get_prize_reserves_value<SUI>() == 2400000);
 
-        let prize_coin = lounge.claim<SUI>(scenario.ctx());
+        let prize_coin = lounge_registry.claim<SUI>(1, scenario.ctx());
         assert!(prize_coin.value() == 2400000);
         prize_coin.destroy_for_testing();
     };
@@ -578,7 +578,7 @@ fun test_player_win_scenario() {
 
     test_scenario::return_shared(phase_info);
     test_scenario::return_shared(pool_factory);
-    test_scenario::return_shared(lounge_factory);
+    test_scenario::return_shared(lounge_registry);
     test_scenario::return_shared(prize_pool);
     clock.destroy_for_testing();
     scenario.end();
@@ -591,7 +591,7 @@ fun test_lp_win_scenario() {
         mut clock,
         mut phase_info,
         mut pool_factory,
-        mut lounge_factory,
+        mut lounge_registry,
         mut prize_pool,
     ) = build_initialized_prize_pool_test_suite(
         AUTHORITY,
@@ -658,7 +658,7 @@ fun test_lp_win_scenario() {
             &phase_info,
             &mut prize_pool,
             &mut pool_factory,
-            &mut lounge_factory,
+            &mut lounge_registry,
             scenario.ctx(),
         );
 
@@ -680,7 +680,7 @@ fun test_lp_win_scenario() {
     // Check the lounge created
     scenario.next_tx(USER1);
     {
-        assert!(lounge_factory.is_lounge_available(1) == false);
+        assert!(lounge_registry.is_lounge_available(1) == false);
     };
 
     // Check the fee distribution
@@ -729,7 +729,7 @@ fun test_lp_win_scenario() {
 
     test_scenario::return_shared(phase_info);
     test_scenario::return_shared(pool_factory);
-    test_scenario::return_shared(lounge_factory);
+    test_scenario::return_shared(lounge_registry);
     test_scenario::return_shared(prize_pool);
     clock.destroy_for_testing();
     scenario.end();

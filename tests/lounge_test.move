@@ -25,7 +25,7 @@ const UNAUTHORIZED: address = @0xFFF;
 #[test]
 #[expected_failure(abort_code = test_scenario::EEmptyInventory)]
 fun test_capability_cannot_be_taken_by_unauthorized_user() {
-    let (mut scenario, clock, phase_info, pool_registry, lounge_factory) = build_lounge_test_suite(
+    let (mut scenario, clock, phase_info, pool_registry, lounge_registry) = build_lounge_test_suite(
         AUTHORITY,
     );
 
@@ -38,7 +38,7 @@ fun test_capability_cannot_be_taken_by_unauthorized_user() {
 
     test_scenario::return_shared(phase_info);
     test_scenario::return_shared(pool_registry);
-    test_scenario::return_shared(lounge_factory);
+    test_scenario::return_shared(lounge_registry);
     clock.destroy_for_testing();
     scenario.end();
 }
@@ -51,7 +51,7 @@ fun test_cannot_create_lounge_with_0x0_recipient() {
         clock,
         phase_info,
         pool_registry,
-        mut lounge_factory,
+        mut lounge_registry,
     ) = build_lounge_test_suite(
         AUTHORITY,
     );
@@ -59,13 +59,13 @@ fun test_cannot_create_lounge_with_0x0_recipient() {
     scenario.next_tx(AUTHORITY);
     {
         let lounge_cap = scenario.take_from_sender<LoungeCap>();
-        let _ = lounge_cap.create_lounge<SUI>(&mut lounge_factory, 0, @0x0, scenario.ctx());
+        let _ = lounge_cap.create_lounge<SUI>(&mut lounge_registry, 0, @0x0, scenario.ctx());
         scenario.return_to_sender(lounge_cap);
     };
 
     test_scenario::return_shared(phase_info);
     test_scenario::return_shared(pool_registry);
-    test_scenario::return_shared(lounge_factory);
+    test_scenario::return_shared(lounge_registry);
     clock.destroy_for_testing();
     scenario.end();
 }
@@ -77,7 +77,7 @@ fun test_create_lounge_by_capability() {
         clock,
         phase_info,
         pool_registry,
-        mut lounge_factory,
+        mut lounge_registry,
     ) = build_lounge_test_suite(
         AUTHORITY,
     );
@@ -85,13 +85,13 @@ fun test_create_lounge_by_capability() {
     scenario.next_tx(AUTHORITY);
     {
         let lounge_cap = scenario.take_from_sender<LoungeCap>();
-        let _ = lounge_cap.create_lounge<SUI>(&mut lounge_factory, 0, @0x1, scenario.ctx());
+        let _ = lounge_cap.create_lounge<SUI>(&mut lounge_registry, 0, @0x1, scenario.ctx());
         scenario.return_to_sender(lounge_cap);
     };
 
     test_scenario::return_shared(phase_info);
     test_scenario::return_shared(pool_registry);
-    test_scenario::return_shared(lounge_factory);
+    test_scenario::return_shared(lounge_registry);
     clock.destroy_for_testing();
     scenario.end();
 }
@@ -110,7 +110,7 @@ fun test_lounge_cannot_claim_by_unauthorized() {
         clock,
         phase_info,
         pool_registry,
-        mut lounge_factory,
+        mut lounge_registry,
     ) = build_lounge_test_suite(
         AUTHORITY,
     );
@@ -122,7 +122,7 @@ fun test_lounge_cannot_claim_by_unauthorized() {
     {
         let lounge_cap = scenario.take_from_sender<LoungeCap>();
         let _ = lounge_cap.create_lounge<SUI>(
-            &mut lounge_factory,
+            &mut lounge_registry,
             0,
             recipient,
             scenario.ctx(),
@@ -132,16 +132,14 @@ fun test_lounge_cannot_claim_by_unauthorized() {
 
     scenario.next_tx(unauthorized_recipient);
     {
-        let lounge = lounge_factory.get_lounge_number_mut(0);
-
         // Even though the lounge is transferred to unauthorized recipient, it should claimable by the original recipient
-        let claimed_coin = lounge.claim<SUI>(scenario.ctx());
+        let claimed_coin = lounge_registry.claim<SUI>(0, scenario.ctx());
         claimed_coin.destroy_for_testing();
     };
 
     test_scenario::return_shared(phase_info);
     test_scenario::return_shared(pool_registry);
-    test_scenario::return_shared(lounge_factory);
+    test_scenario::return_shared(lounge_registry);
     clock.destroy_for_testing();
     scenario.end();
 }
@@ -153,7 +151,7 @@ fun test_lounge_can_claim_by_recipient() {
         clock,
         phase_info,
         pool_registry,
-        mut lounge_factory,
+        mut lounge_registry,
     ) = build_lounge_test_suite(
         AUTHORITY,
     );
@@ -165,7 +163,7 @@ fun test_lounge_can_claim_by_recipient() {
     {
         let lounge_cap = scenario.take_from_sender<LoungeCap>();
         let _ = lounge_cap.create_lounge<SUI>(
-            &mut lounge_factory,
+            &mut lounge_registry,
             0,
             recipient,
             scenario.ctx(),
@@ -176,21 +174,19 @@ fun test_lounge_can_claim_by_recipient() {
     scenario.next_tx(recipient);
     {
         let balance = create_balance_for_testing<SUI>(claim_value);
-        let lounge = lounge_factory.get_lounge_number_mut(0);
-        lounge.add_reserves(from_balance(balance, scenario.ctx()));
+        lounge_registry.add_reserves(0, from_balance(balance, scenario.ctx()));
     };
 
     scenario.next_tx(recipient);
     {
-        let lounge = lounge_factory.get_lounge_number_mut(0);
-        let claimed_balance = lounge.claim<SUI>(scenario.ctx());
+        let claimed_balance = lounge_registry.claim<SUI>(0, scenario.ctx());
         assert!(claimed_balance.value() == claim_value);
         claimed_balance.destroy_for_testing();
     };
 
     test_scenario::return_shared(phase_info);
     test_scenario::return_shared(pool_registry);
-    test_scenario::return_shared(lounge_factory);
+    test_scenario::return_shared(lounge_registry);
     clock.destroy_for_testing();
     scenario.end();
 }

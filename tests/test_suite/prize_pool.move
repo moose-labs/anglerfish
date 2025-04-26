@@ -1,7 +1,7 @@
 #[test_only]
 module red_ocean::prize_pool_test_suite;
 
-use red_ocean::lounge::LoungeFactory;
+use red_ocean::lounge::LoungeRegistry;
 use red_ocean::lounge_test_suite::build_lounge_test_suite;
 use red_ocean::phase::{PhaseInfo, PhaseInfoCap};
 use red_ocean::pool::PoolRegistry;
@@ -23,13 +23,13 @@ const PRIZE_POOL_PROTOCOL_FEE_BPS: u64 = 500;
 /// Set pool factory for prize pool and also deposit liquidity into the pools.
 public fun build_prize_pool_test_suite(
     authority: address,
-): (Scenario, Clock, PhaseInfo, PoolRegistry, LoungeFactory, PrizePool) {
+): (Scenario, Clock, PhaseInfo, PoolRegistry, LoungeRegistry, PrizePool) {
     let (
         mut scenario,
         clock,
         phase_info,
         mut pool_registry,
-        lounge_factory,
+        lounge_registry,
     ) = build_lounge_test_suite(authority);
     (authority);
 
@@ -82,19 +82,19 @@ public fun build_prize_pool_test_suite(
             scenario.ctx(),
         );
     };
-    (scenario, clock, phase_info, pool_registry, lounge_factory, prize_pool)
+    (scenario, clock, phase_info, pool_registry, lounge_registry, prize_pool)
 }
 
 /// build_initialized_prize_pool_test_suite
 public fun build_initialized_prize_pool_test_suite(
     authority: address,
-): (Scenario, Clock, PhaseInfo, PoolRegistry, LoungeFactory, PrizePool) {
+): (Scenario, Clock, PhaseInfo, PoolRegistry, LoungeRegistry, PrizePool) {
     let (
         mut scenario,
         mut clock,
         mut phase_info,
         pool_registry,
-        lounge_factory,
+        lounge_registry,
         mut prize_pool,
     ) = build_prize_pool_test_suite(authority);
 
@@ -105,7 +105,11 @@ public fun build_initialized_prize_pool_test_suite(
 
     prize_pool_cap.new_round_table_if_needed(&mut prize_pool, &phase_info, scenario.ctx());
     prize_pool_cap.set_pool_registry(&mut prize_pool, object::id(&pool_registry), scenario.ctx());
-    prize_pool_cap.set_lounge_factory(&mut prize_pool, object::id(&lounge_factory), scenario.ctx());
+    prize_pool_cap.set_lounge_registry(
+        &mut prize_pool,
+        object::id(&lounge_registry),
+        scenario.ctx(),
+    );
     prize_pool_cap.set_max_players(&mut prize_pool, PRIZE_POOL_MAX_PLAYERS, scenario.ctx());
     prize_pool_cap.set_price_per_ticket(
         &mut prize_pool,
@@ -127,5 +131,5 @@ public fun build_initialized_prize_pool_test_suite(
 
     scenario.return_to_sender(prize_pool_cap);
 
-    (scenario, clock, phase_info, pool_registry, lounge_factory, prize_pool)
+    (scenario, clock, phase_info, pool_registry, lounge_registry, prize_pool)
 }

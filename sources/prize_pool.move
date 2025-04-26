@@ -1,6 +1,6 @@
 module red_ocean::prize_pool;
 
-use red_ocean::lounge::{LoungeCap, LoungeFactory};
+use red_ocean::lounge::{LoungeCap, LoungeRegistry};
 use red_ocean::phase::{PhaseInfo, PhaseInfoCap};
 use red_ocean::pool::{PoolRegistry, PoolCap};
 use red_ocean::round::{Self, Round};
@@ -14,7 +14,7 @@ use sui::table::{Self, Table};
 
 const ErrorMaximumNumberOfPlayersReached: u64 = 1;
 const ErrorInvalidPoolRegistry: u64 = 2;
-const ErrorInvalidLoungeFactory: u64 = 3;
+const ErrorInvalidLoungeRegistry: u64 = 3;
 const ErrorPurchaseAmountTooLow: u64 = 4;
 const ErrorLpFeeAmountTooHigh: u64 = 5;
 const ErrorProtocolFeeAmountTooHigh: u64 = 6;
@@ -32,7 +32,7 @@ public struct PrizePool has key {
     /// The pool factory that hold pools
     pool_registry: Option<ID>,
     /// The lounge factory that can create lounges
-    lounge_factory: Option<ID>,
+    lounge_registry: Option<ID>,
     /// The maximum number of players that can participate in the prize pool each round
     max_players: u64,
     /// The ticket price based on unit of the pool
@@ -59,7 +59,7 @@ fun init(ctx: &mut TxContext) {
     transfer::share_object(PrizePool {
         id: object::new(ctx),
         pool_registry: option::none(),
-        lounge_factory: option::none(),
+        lounge_registry: option::none(),
         max_players: 0,
         price_per_ticket: 0,
         lp_fee_bps: 2500,
@@ -83,13 +83,13 @@ public fun set_pool_registry(
     prize_pool.pool_registry = option::some(pool_registry_id);
 }
 
-public fun set_lounge_factory(
+public fun set_lounge_registry(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
-    lounge_factory_id: ID,
+    lounge_registry_id: ID,
     _ctx: &mut TxContext,
 ) {
-    prize_pool.lounge_factory = option::some(lounge_factory_id);
+    prize_pool.lounge_registry = option::some(lounge_registry_id);
 }
 
 public fun set_max_players(
@@ -168,8 +168,8 @@ public fun get_pool_registry(self: &PrizePool): Option<ID> {
     self.pool_registry
 }
 
-public fun get_lounge_factory(self: &PrizePool): Option<ID> {
-    self.lounge_factory
+public fun get_lounge_registry(self: &PrizePool): Option<ID> {
+    self.lounge_registry
 }
 
 public fun get_max_players(self: &PrizePool): u64 {
@@ -237,7 +237,7 @@ public fun purchase_ticket<T>(
 ) {
     phase_info.assert_ticketing_phase();
     assert!(self.pool_registry.is_some(), ErrorInvalidPoolRegistry);
-    assert!(self.lounge_factory.is_some(), ErrorInvalidLoungeFactory);
+    assert!(self.lounge_registry.is_some(), ErrorInvalidLoungeRegistry);
 
     // Check if the current round table already exists
     let current_round = phase_info.get_current_round();
@@ -284,7 +284,7 @@ entry fun draw<T>(
 ) {
     phase_info.assert_drawing_phase();
     assert!(prize_pool.pool_registry.is_some(), ErrorInvalidPoolRegistry);
-    assert!(prize_pool.lounge_factory.is_some(), ErrorInvalidLoungeFactory);
+    assert!(prize_pool.lounge_registry.is_some(), ErrorInvalidLoungeRegistry);
 
     let prize_reserves_value = prize_pool.get_total_prize_reserves_value<T>(pool_registry);
     let lp_tickets = prize_reserves_value / prize_pool.price_per_ticket;
@@ -314,24 +314,29 @@ public fun settle<T>(
     phase_info: &PhaseInfo,
     prize_pool: &mut PrizePool,
     pool_registry: &mut PoolRegistry,
-    lounge_factory: &mut LoungeFactory,
+    lounge_registry: &mut LoungeRegistry,
     ctx: &mut TxContext,
 ) {
     phase_info.assert_settling_phase();
     prize_pool.assert_valid_pool_registry(pool_registry);
-    prize_pool.assert_valid_longe_factory(lounge_factory);
+    prize_pool.assert_valid_longe_factory(lounge_registry);
 
     let current_round = phase_info.get_current_round();
     let round = prize_pool.rounds.borrow_mut(current_round);
 
     if (round.get_winner().is_some()) {
         let winner = round.get_winner().extract();
-        let lounge_number = lounge_cap.create_lounge<T>(lounge_factory, current_round, winner, ctx);
+        let lounge_number = lounge_cap.create_lounge<T>(
+            lounge_registry,
+            current_round,
+            winner,
+            ctx,
+        );
         prize_pool.inner_aggregate_prize_to_lounge<T>(
             phase_info,
             pool_cap,
             pool_registry,
-            lounge_factory,
+            lounge_registry,
             lounge_number,
             ctx,
         );
@@ -352,13 +357,11 @@ fun inner_aggregate_prize_to_lounge<T>(
     phase_info: &PhaseInfo,
     pool_cap: &PoolCap,
     pool_registry: &mut PoolRegistry,
-    lounge_factory: &mut LoungeFactory,
+    lounge_registry: &mut LoungeRegistry,
     lounge_number: u64,
     ctx: &mut TxContext,
 ) {
     self.assert_valid_pool_registry(pool_registry);
-
-    let lounge = lounge_factory.get_lounge_number_mut<T>(lounge_number);
 
     let risk_ratios = pool_registry.get_pool_risk_ratios();
     let risk_ratios_len = risk_ratios.length();
@@ -366,7 +369,14 @@ fun inner_aggregate_prize_to_lounge<T>(
     let mut i = 0;
     while (i < risk_ratios_len) {
         let risk_ratio_bps = risk_ratios[i];
-        pool_cap.withdraw_prize<T>(pool_registry, risk_ratio_bps, phase_info, lounge, ctx);
+        pool_cap.withdraw_prize<T>(
+            pool_registry,
+            risk_ratio_bps,
+            phase_info,
+            lounge_registry,
+            lounge_number,
+            ctx,
+        );
         i = i + 1;
     };
 }
@@ -492,9 +502,12 @@ fun assert_valid_pool_registry(self: &PrizePool, pool_registry: &PoolRegistry) {
     assert!(object::id(pool_registry) == self.pool_registry.borrow(), ErrorInvalidPoolRegistry);
 }
 
-fun assert_valid_longe_factory(self: &PrizePool, lounge_factory: &LoungeFactory) {
-    assert!(self.lounge_factory.is_some(), ErrorInvalidLoungeFactory);
-    assert!(object::id(lounge_factory) == self.lounge_factory.borrow(), ErrorInvalidLoungeFactory);
+fun assert_valid_longe_factory(self: &PrizePool, lounge_registry: &LoungeRegistry) {
+    assert!(self.lounge_registry.is_some(), ErrorInvalidLoungeRegistry);
+    assert!(
+        object::id(lounge_registry) == self.lounge_registry.borrow(),
+        ErrorInvalidLoungeRegistry,
+    );
 }
 
 fun assert_max_players(self: &PrizePool, phase_info: &PhaseInfo) {

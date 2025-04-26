@@ -1,6 +1,6 @@
 module red_ocean::pool;
 
-use red_ocean::lounge::Lounge;
+use red_ocean::lounge::LoungeRegistry;
 use red_ocean::phase::PhaseInfo;
 use sui::bag::{Self, Bag};
 use sui::balance::Balance;
@@ -263,7 +263,8 @@ public(package) fun withdraw_prize<T>(
     pool_registry: &mut PoolRegistry,
     risk_ratio_bps: u64,
     phase_info: &PhaseInfo,
-    lounge: &mut Lounge<T>,
+    lounge_registry: &mut LoungeRegistry,
+    lounge_number: u64,
     ctx: &mut TxContext,
 ) {
     phase_info.assert_settling_phase();
@@ -273,7 +274,7 @@ public(package) fun withdraw_prize<T>(
     let prize_reserves_amount = pool.get_prize_reserves_value();
     let prize_coin = pool.inner_take_reserves_balance(prize_reserves_amount, ctx);
 
-    lounge.add_reserves(prize_coin);
+    lounge_registry.add_reserves(lounge_number, prize_coin);
 }
 
 public fun get_deposit_enabled<T>(self: &Pool<T>): bool {
