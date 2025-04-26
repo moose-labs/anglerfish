@@ -1,8 +1,8 @@
 #[test_only]
-module red_ocean::lounge_pool_test;
+module anglerfish::lounge_pool_test;
 
-use red_ocean::lounge::{Self, LoungeCap};
-use red_ocean::lounge_test_suite::build_lounge_test_suite;
+use anglerfish::lounge::{Self, LoungeCap};
+use anglerfish::lounge_test_suite::build_lounge_test_suite;
 use sui::balance::create_for_testing as create_balance_for_testing;
 use sui::coin::from_balance;
 use sui::sui::SUI;

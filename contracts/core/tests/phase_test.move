@@ -1,8 +1,8 @@
 #[test_only]
-module red_ocean::phase_test;
+module anglerfish::phase_test;
 
-use red_ocean::base_test_suite::build_base_test_suite;
-use red_ocean::phase::{Self, PhaseInfo, PhaseInfoCap};
+use anglerfish::base_test_suite::build_base_test_suite;
+use anglerfish::phase::{Self, PhaseInfo, PhaseInfoCap};
 use sui::test_scenario;
 
 const DURATION: u64 = 60;

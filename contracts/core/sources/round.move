@@ -1,4 +1,4 @@
-module red_ocean::round;
+module anglerfish::round;
 
 use sui::table::{Self, Table};
 use sui::vec_set::{Self, VecSet};

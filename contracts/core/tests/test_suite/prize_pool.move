@@ -1,11 +1,11 @@
 #[test_only]
-module red_ocean::prize_pool_test_suite;
+module anglerfish::prize_pool_test_suite;
 
-use red_ocean::lounge::LoungeRegistry;
-use red_ocean::lounge_test_suite::build_lounge_test_suite;
-use red_ocean::phase::{PhaseInfo, PhaseInfoCap};
-use red_ocean::pool::PoolRegistry;
-use red_ocean::prize_pool::{PrizePool, PrizePoolCap};
+use anglerfish::lounge::LoungeRegistry;
+use anglerfish::lounge_test_suite::build_lounge_test_suite;
+use anglerfish::phase::{PhaseInfo, PhaseInfoCap};
+use anglerfish::pool::PoolRegistry;
+use anglerfish::prize_pool::{PrizePool, PrizePoolCap};
 use sui::balance::create_for_testing as create_balance_for_testing;
 use sui::clock::Clock;
 use sui::sui::SUI;

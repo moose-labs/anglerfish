@@ -1,5 +1,5 @@
 [package]
-name = "red_ocean"
+name = "anglerfish"
 edition = "2024.alpha"
 
 [dependencies.Sui]
@@ -8,8 +8,11 @@ subdir = "crates/sui-framework/packages/sui-framework"
 rev = "framework/mainnet"
 override = true
 
+[dependencies.Math]
+local = "../libs/math"
+
 [addresses]
-red_ocean = "0x0"
+anglerfish = "0x0"
 
 [move.toolchain-version]
 compiler-version = "1.46.2"

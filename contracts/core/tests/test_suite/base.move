@@ -1,10 +1,10 @@
 #[test_only]
-module red_ocean::base_test_suite;
+module anglerfish::base_test_suite;
 
-use red_ocean::lounge::init_for_testing as init_lounge_for_testing;
-use red_ocean::phase::init_for_testing as init_phase_info_for_testing;
-use red_ocean::pool::init_for_testing as init_pool_for_testing;
-use red_ocean::prize_pool::init_for_testing as init_prize_for_testing;
+use anglerfish::lounge::init_for_testing as init_lounge_for_testing;
+use anglerfish::phase::init_for_testing as init_phase_info_for_testing;
+use anglerfish::pool::init_for_testing as init_pool_for_testing;
+use anglerfish::prize_pool::init_for_testing as init_prize_for_testing;
 use sui::clock::{create_for_testing as create_clock_for_testing, Clock};
 use sui::random::create_for_testing as create_random_for_testing;
 use sui::test_scenario::{Self, Scenario};

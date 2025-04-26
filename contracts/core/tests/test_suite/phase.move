@@ -1,8 +1,8 @@
 #[test_only]
-module red_ocean::phase_test_suite;
+module anglerfish::phase_test_suite;
 
-use red_ocean::base_test_suite::build_base_test_suite;
-use red_ocean::phase::{PhaseInfo, PhaseInfoCap};
+use anglerfish::base_test_suite::build_base_test_suite;
+use anglerfish::phase::{PhaseInfo, PhaseInfoCap};
 use sui::clock::Clock;
 use sui::test_scenario::Scenario;
 

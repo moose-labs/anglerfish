@@ -1,7 +1,8 @@
-module red_ocean::pool;
+module anglerfish::pool;
 
-use red_ocean::lounge::LoungeRegistry;
-use red_ocean::phase::PhaseInfo;
+use anglerfish::lounge::LoungeRegistry;
+use anglerfish::phase::PhaseInfo;
+use math::u64::mul_div;
 use sui::bag::{Self, Bag};
 use sui::balance::Balance;
 use sui::coin::{Self, Coin, from_balance};
@@ -198,7 +199,7 @@ public fun deposit<T>(
     let shares_to_mint = if (reserve == 0) {
         deposit_amount
     } else {
-        deposit_amount * pool.total_shares / reserve
+        mul_div(deposit_amount, pool.total_shares, reserve)
     };
 
     assert!(shares_to_mint > 0, ErrorTooSmallToMint);
@@ -234,7 +235,7 @@ public fun redeem<T>(
 
     let total_liquidity = pool.reserves.value();
     let total_shares = pool.total_shares;
-    let redeem_value = redeem_shares_amount * total_liquidity / total_shares;
+    let redeem_value = mul_div(redeem_shares_amount, total_liquidity, total_shares);
 
     // Update user shares
     let user_shares = pool.user_shares.borrow_mut(redeemer);
@@ -302,7 +303,7 @@ public fun get_risk_ratio_bps<T>(self: &Pool<T>): u64 {
 }
 
 public fun get_prize_reserves_value<T>(self: &Pool<T>): u64 {
-    self.risk_ratio_bps * self.total_reserves_value / MAX_RISK_RATIO_BPS
+    mul_div(self.risk_ratio_bps, self.total_reserves_value, MAX_RISK_RATIO_BPS)
 }
 
 public fun get_user_shares<T>(self: &Pool<T>, user: address): u64 {

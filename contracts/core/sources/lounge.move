@@ -1,4 +1,4 @@
-module red_ocean::lounge;
+module anglerfish::lounge;
 
 use sui::bag::{Self, Bag};
 use sui::balance::{Self, Balance};

@@ -1,10 +1,10 @@
-module red_ocean::prize_pool;
+module anglerfish::prize_pool;
 
-use red_ocean::lounge::{LoungeCap, LoungeRegistry};
-use red_ocean::phase::{PhaseInfo, PhaseInfoCap};
-use red_ocean::pool::{PoolRegistry, PoolCap};
-use red_ocean::round::{Self, Round};
-use red_ocean::ticket_calculator::calculate_total_ticket_with_fees;
+use anglerfish::lounge::{LoungeCap, LoungeRegistry};
+use anglerfish::phase::{PhaseInfo, PhaseInfoCap};
+use anglerfish::pool::{PoolRegistry, PoolCap};
+use anglerfish::round::{Self, Round};
+use anglerfish::ticket_calculator::calculate_total_ticket_with_fees;
 use sui::bag::{Self, Bag};
 use sui::balance::{Self, Balance};
 use sui::clock::Clock;

@@ -1,4 +1,4 @@
-module red_ocean::phase;
+module anglerfish::phase;
 
 use sui::clock::Clock;
 

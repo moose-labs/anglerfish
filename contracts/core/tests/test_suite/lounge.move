@@ -1,10 +1,10 @@
 #[test_only]
-module red_ocean::lounge_test_suite;
+module anglerfish::lounge_test_suite;
 
-use red_ocean::lounge::LoungeRegistry;
-use red_ocean::phase::PhaseInfo;
-use red_ocean::pool::PoolRegistry;
-use red_ocean::pool_test_suite::build_pool_test_suite;
+use anglerfish::lounge::LoungeRegistry;
+use anglerfish::phase::PhaseInfo;
+use anglerfish::pool::PoolRegistry;
+use anglerfish::pool_test_suite::build_pool_test_suite;
 use sui::clock::Clock;
 use sui::test_scenario::Scenario;
 

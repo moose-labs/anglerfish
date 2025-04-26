@@ -1,9 +1,9 @@
 #[test_only]
-module red_ocean::pool_test_suite;
+module anglerfish::pool_test_suite;
 
-use red_ocean::phase::{PhaseInfo, PhaseInfoCap};
-use red_ocean::phase_test_suite::build_phase_test_suite;
-use red_ocean::pool::{PoolCap, PoolRegistry};
+use anglerfish::phase::{PhaseInfo, PhaseInfoCap};
+use anglerfish::phase_test_suite::build_phase_test_suite;
+use anglerfish::pool::{PoolCap, PoolRegistry};
 use sui::clock::Clock;
 use sui::sui::SUI;
 use sui::test_scenario::Scenario;

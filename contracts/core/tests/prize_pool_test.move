@@ -1,13 +1,13 @@
 #[test_only]
-module red_ocean::prize_pool_test;
+module anglerfish::prize_pool_test;
 
-use red_ocean::base_test_suite::build_base_test_suite;
-use red_ocean::lounge::LoungeCap;
-use red_ocean::lounge_test_suite::build_lounge_test_suite;
-use red_ocean::phase::{Self, PhaseInfoCap};
-use red_ocean::pool::PoolCap;
-use red_ocean::prize_pool::{Self, PrizePoolCap, PrizePool};
-use red_ocean::prize_pool_test_suite::{
+use anglerfish::base_test_suite::build_base_test_suite;
+use anglerfish::lounge::LoungeCap;
+use anglerfish::lounge_test_suite::build_lounge_test_suite;
+use anglerfish::phase::{Self, PhaseInfoCap};
+use anglerfish::pool::PoolCap;
+use anglerfish::prize_pool::{Self, PrizePoolCap, PrizePool};
+use anglerfish::prize_pool_test_suite::{
     build_prize_pool_test_suite,
     build_initialized_prize_pool_test_suite
 };

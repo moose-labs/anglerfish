@@ -1,11 +1,11 @@
 #[test_only]
-module red_ocean::pool_test;
+module anglerfish::pool_test;
 
-use red_ocean::base_test_suite::build_base_test_suite;
-use red_ocean::phase::PhaseInfo;
-use red_ocean::phase_test_suite::build_phase_test_suite;
-use red_ocean::pool::{Self, PoolCap, PoolRegistry};
-use red_ocean::pool_test_suite::build_pool_test_suite;
+use anglerfish::base_test_suite::build_base_test_suite;
+use anglerfish::phase::PhaseInfo;
+use anglerfish::phase_test_suite::build_phase_test_suite;
+use anglerfish::pool::{Self, PoolCap, PoolRegistry};
+use anglerfish::pool_test_suite::build_pool_test_suite;
 use sui::balance::create_for_testing as create_balance_for_testing;
 use sui::coin::Coin;
 use sui::sui::SUI;
