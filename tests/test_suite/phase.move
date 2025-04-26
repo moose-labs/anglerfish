@@ -22,7 +22,6 @@ public fun build_phase_test_suite(authority: address): (Scenario, Clock, PhaseIn
         &mut phase_info,
         PHASE_DURATION,
         PHASE_DURATION,
-        PHASE_DURATION,
         scenario.ctx(),
     );
     scenario.return_to_sender(phase_info_cap);

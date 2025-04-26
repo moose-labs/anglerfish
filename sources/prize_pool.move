@@ -143,10 +143,8 @@ public fun new_round_table_if_needed(
 public fun claim_protocol_fee<T>(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
-    phase_info: &PhaseInfo,
     ctx: &mut TxContext,
 ): Coin<T> {
-    phase_info.assert_settling_phase();
     let protocol_fee_reserves = prize_pool.inner_get_protocol_fee_reserves_balance_mut<T>();
     let fee_coin = from_balance(protocol_fee_reserves.withdraw_all(), ctx);
     fee_coin
@@ -155,10 +153,8 @@ public fun claim_protocol_fee<T>(
 public fun claim_treasury_reserve<T>(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
-    phase_info: &PhaseInfo,
     ctx: &mut TxContext,
 ): Coin<T> {
-    phase_info.assert_settling_phase();
     let reserves = prize_pool.inner_get_treasury_reserves_balance_mut<T>();
     let fee_coin = from_balance(reserves.withdraw_all(), ctx);
     fee_coin
@@ -303,21 +299,24 @@ entry fun draw<T>(
     let current_round = phase_info.get_current_round();
     prize_pool.rounds.borrow_mut(current_round).set_winner(winner_player);
 
-    // Instantly move to the Settling phase
+    // Instantly move to the Distributing phase
     phase_info_cap.next(phase_info, clock, ctx);
 }
 
-public fun settle<T>(
+public fun distribute<T>(
     _self: &PrizePoolCap,
     pool_cap: &PoolCap,
     lounge_cap: &LoungeCap,
-    phase_info: &PhaseInfo,
+    phase_info_cap: &PhaseInfoCap,
+    phase_info: &mut PhaseInfo,
     prize_pool: &mut PrizePool,
     pool_registry: &mut PoolRegistry,
     lounge_registry: &mut LoungeRegistry,
+    clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    phase_info.assert_settling_phase();
+    phase_info.assert_distributing_phase();
+
     prize_pool.assert_valid_pool_registry(pool_registry);
     prize_pool.assert_valid_longe_factory(lounge_registry);
 
@@ -343,10 +342,13 @@ public fun settle<T>(
     };
 
     let fee_reserves = prize_pool.inner_get_lp_fee_reserves_balance_mut<T>();
-    inner_distribute_fee_to_pools<T>(phase_info, pool_registry, fee_reserves, ctx);
+    inner_distribute_fee_to_pools<T>(pool_registry, fee_reserves, ctx);
 
     // We create round table for the next round
     prize_pool.inner_ensure_round_table_exists(current_round + 1, ctx);
+
+    // Instantly move to the Settling phase
+    phase_info_cap.next(phase_info, clock, ctx);
 }
 
 /// Internal
@@ -382,13 +384,10 @@ fun inner_aggregate_prize_to_lounge<T>(
 }
 
 fun inner_distribute_fee_to_pools<T>(
-    phase_info: &PhaseInfo,
     pool_registry: &mut PoolRegistry,
     reserves: &mut Balance<T>,
     ctx: &mut TxContext,
 ) {
-    phase_info.assert_settling_phase();
-
     let reserves_value = reserves.value();
 
     let total_risk_ratio_bps = pool_registry.get_total_risk_ratio_bps();

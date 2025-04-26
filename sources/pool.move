@@ -267,7 +267,7 @@ public(package) fun withdraw_prize<T>(
     lounge_number: u64,
     ctx: &mut TxContext,
 ) {
-    phase_info.assert_settling_phase();
+    phase_info.assert_distributing_phase();
 
     let pool = get_pool_by_risk_ratio_mut<T>(pool_registry, risk_ratio_bps);
 

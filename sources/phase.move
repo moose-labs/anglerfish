@@ -7,9 +7,11 @@ const ErrorAlreadyInitialized: u64 = 2;
 const ErrorNotLiquidityPhase: u64 = 3;
 const ErrorNotTicketingPhase: u64 = 4;
 const ErrorNotDrawingPhase: u64 = 5;
-const ErrorNotSettlingPhase: u64 = 6;
-const ErrorCurrentPhaseNotCompleted: u64 = 7;
-const ErrorDurationTooShort: u64 = 8;
+const ErrorNotDistributingPhase: u64 = 6;
+const ErrorNotSettlingPhase: u64 = 7;
+const ErrorCurrentPhaseNotCompleted: u64 = 8;
+const ErrorCurrentPhaseIsNotAllowedIterateFromEntry: u64 = 9;
+const ErrorDurationTooShort: u64 = 10;
 
 public enum Phase has copy, drop, store {
     /// The system is not yet initialized.
@@ -18,8 +20,10 @@ public enum Phase has copy, drop, store {
     LiquidityProviding,
     /// Deposits are closed; selling tickets to players who want liquidity.
     Ticketing,
-    /// Tickets are drawing for prizes
+    /// Tickets are waiting for draw the prizes
     Drawing,
+    /// The system is in the process of distributing the results.
+    Distributing,
     /// The system is in the process of settling the results.
     Settling,
 }
@@ -29,8 +33,6 @@ public struct PhaseDurations has copy, drop, store {
     liquidity_providing_duration: u64,
     /// The duration of the ticketing phase in seconds
     ticketing_duration: u64,
-    /// The duration of the drawing phase in seconds
-    settling_duration: u64,
 }
 
 public struct PhaseInfoCap has key, store {
@@ -64,7 +66,6 @@ fun init(ctx: &mut TxContext) {
         durations: PhaseDurations {
             liquidity_providing_duration: 0,
             ticketing_duration: 0,
-            settling_duration: 0,
         },
     });
 
@@ -76,7 +77,6 @@ public fun initialize(
     phase_info: &mut PhaseInfo,
     liquidity_providing_duration: u64,
     ticketing_duration: u64,
-    settling_duration: u64,
     _: &mut TxContext,
 ) {
     assert!(phase_info.current_phase == Phase::Uninitialized, ErrorAlreadyInitialized);
@@ -84,7 +84,6 @@ public fun initialize(
     let phase_durations = PhaseDurations {
         liquidity_providing_duration,
         ticketing_duration,
-        settling_duration,
     };
 
     phase_durations.assert_durations();
@@ -94,7 +93,18 @@ public fun initialize(
     phase_info.current_phase = Phase::Settling;
 }
 
-public fun next(
+/// On LiquidityProviding and Ticketing phases are allowed to call by public entry
+public fun next_entry(
+    self: &PhaseInfoCap, // Enforce to use by phase info cap capability
+    phase_info: &mut PhaseInfo,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    assert!(phase_info.is_allowed_next_from_entry(), ErrorCurrentPhaseIsNotAllowedIterateFromEntry);
+    self.next(phase_info, clock, ctx);
+}
+
+public(package) fun next(
     self: &PhaseInfoCap, // Enforce to use by phase info cap capability
     phase_info: &mut PhaseInfo,
     clock: &Clock,
@@ -135,7 +145,19 @@ public fun is_current_phase_completed(self: &PhaseInfo, clock: &Clock): bool {
         Phase::LiquidityProviding => current_timestamp_ms >= self.estimate_current_phase_completed_at(),
         Phase::Ticketing => current_timestamp_ms >=  self.estimate_current_phase_completed_at(),
         Phase::Drawing => true,
-        Phase::Settling => current_timestamp_ms >=  self.estimate_current_phase_completed_at(),
+        Phase::Distributing => true,
+        Phase::Settling => true,
+    }
+}
+
+public fun is_allowed_next_from_entry(self: &PhaseInfo): bool {
+    match (self.current_phase) {
+        Phase::Uninitialized => false,
+        Phase::LiquidityProviding => true,
+        Phase::Ticketing => true,
+        Phase::Drawing => false, // triggered by prize_pool::draw
+        Phase::Distributing => false, // triggered by prize_pool::distribute
+        Phase::Settling => true,
     }
 }
 
@@ -147,7 +169,8 @@ public fun estimate_current_phase_completed_at(self: &PhaseInfo): u64 {
         Phase::LiquidityProviding => current_phase_at + durations.liquidity_providing_duration,
         Phase::Ticketing => current_phase_at + durations.ticketing_duration,
         Phase::Drawing => 0,
-        Phase::Settling => current_phase_at + durations.settling_duration,
+        Phase::Distributing => 0,
+        Phase::Settling => 0,
     }
 }
 
@@ -164,7 +187,8 @@ fun inner_next_phase(self: &PhaseInfo): Phase {
         Phase::Uninitialized => Phase::Uninitialized,
         Phase::LiquidityProviding => Phase::Ticketing,
         Phase::Ticketing => Phase::Drawing,
-        Phase::Drawing => Phase::Settling,
+        Phase::Drawing => Phase::Distributing,
+        Phase::Distributing => Phase::Settling,
         Phase::Settling => Phase::LiquidityProviding,
     }
 }
@@ -174,7 +198,6 @@ fun inner_next_phase(self: &PhaseInfo): Phase {
 fun assert_durations(self: &PhaseDurations) {
     assert!(self.liquidity_providing_duration > 0, ErrorDurationTooShort);
     assert!(self.ticketing_duration > 0, ErrorDurationTooShort);
-    assert!(self.settling_duration > 0, ErrorDurationTooShort);
 }
 
 /// Check the current phase of the liquidity pool
@@ -194,6 +217,10 @@ public fun assert_ticketing_phase(self: &PhaseInfo) {
 
 public fun assert_drawing_phase(self: &PhaseInfo) {
     assert!(self.current_phase == Phase::Drawing, ErrorNotDrawingPhase);
+}
+
+public fun assert_distributing_phase(self: &PhaseInfo) {
+    assert!(self.current_phase == Phase::Distributing, ErrorNotDistributingPhase);
 }
 
 public fun assert_settling_phase(self: &PhaseInfo) {
