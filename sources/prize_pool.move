@@ -222,6 +222,7 @@ public fun purchase_ticket<T>(
     ctx: &mut TxContext,
 ) {
     phase_info.assert_ticketing_phase();
+
     assert!(self.pool_registry.is_some(), ErrorInvalidPoolRegistry);
     assert!(self.lounge_registry.is_some(), ErrorInvalidLoungeRegistry);
 

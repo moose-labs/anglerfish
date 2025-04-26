@@ -16,15 +16,19 @@ public fun build_phase_test_suite(authority: address): (Scenario, Clock, PhaseIn
     scenario.next_tx(authority);
 
     // Prepare liquidity providing phase
-    let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
+
     let mut phase_info = scenario.take_shared<PhaseInfo>();
-    phase_info_cap.initialize(
-        &mut phase_info,
-        PHASE_DURATION,
-        PHASE_DURATION,
-        scenario.ctx(),
-    );
-    scenario.return_to_sender(phase_info_cap);
+
+    {
+        let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
+        phase_info_cap.initialize(
+            &mut phase_info,
+            PHASE_DURATION,
+            PHASE_DURATION,
+            scenario.ctx(),
+        );
+        scenario.return_to_sender(phase_info_cap);
+    };
 
     (scenario, clock, phase_info)
 }

@@ -16,7 +16,7 @@ const TEST_POOL_1_RISK: u64 = 2000;
 const TEST_POOL_2_RISK: u64 = 5000;
 const PRIZE_POOL_MAX_PLAYERS: u64 = 2;
 const PRIZE_POOL_PRICE_PER_TICKET: u64 = 100;
-const PRIZE_POOL_FEE_BPS: u64 = 2500;
+const PRIZE_POOL_LP_FEE_BPS: u64 = 2500;
 const PRIZE_POOL_PROTOCOL_FEE_BPS: u64 = 500;
 
 /// build_prize_pool_test_suite
@@ -31,9 +31,6 @@ public fun build_prize_pool_test_suite(
         mut pool_registry,
         lounge_registry,
     ) = build_lounge_test_suite(authority);
-    (authority);
-
-    scenario.next_tx(authority);
 
     let prize_pool = scenario.take_shared<PrizePool>();
 
@@ -98,37 +95,47 @@ public fun build_initialized_prize_pool_test_suite(
         mut prize_pool,
     ) = build_prize_pool_test_suite(authority);
 
-    scenario.next_tx(authority);
-
     // Initilize parameters for prize pool
-    let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
+    scenario.next_tx(authority);
+    {
+        let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
 
-    prize_pool_cap.set_pool_registry(&mut prize_pool, object::id(&pool_registry), scenario.ctx());
-    prize_pool_cap.set_lounge_registry(
-        &mut prize_pool,
-        object::id(&lounge_registry),
-        scenario.ctx(),
-    );
-    prize_pool_cap.set_max_players(&mut prize_pool, PRIZE_POOL_MAX_PLAYERS, scenario.ctx());
-    prize_pool_cap.set_price_per_ticket(
-        &mut prize_pool,
-        PRIZE_POOL_PRICE_PER_TICKET,
-        scenario.ctx(),
-    );
-    prize_pool_cap.set_lp_fee_bps(&mut prize_pool, PRIZE_POOL_FEE_BPS, scenario.ctx());
-    prize_pool_cap.set_protocol_fee_bps(
-        &mut prize_pool,
-        PRIZE_POOL_PROTOCOL_FEE_BPS,
-        scenario.ctx(),
-    );
+        prize_pool_cap.set_pool_registry(
+            &mut prize_pool,
+            object::id(&pool_registry),
+            scenario.ctx(),
+        );
+        prize_pool_cap.set_lounge_registry(
+            &mut prize_pool,
+            object::id(&lounge_registry),
+            scenario.ctx(),
+        );
+        prize_pool_cap.set_max_players(&mut prize_pool, PRIZE_POOL_MAX_PLAYERS, scenario.ctx());
+        prize_pool_cap.set_price_per_ticket(
+            &mut prize_pool,
+            PRIZE_POOL_PRICE_PER_TICKET,
+            scenario.ctx(),
+        );
+        prize_pool_cap.set_lp_fee_bps(&mut prize_pool, PRIZE_POOL_LP_FEE_BPS, scenario.ctx());
+        prize_pool_cap.set_protocol_fee_bps(
+            &mut prize_pool,
+            PRIZE_POOL_PROTOCOL_FEE_BPS,
+            scenario.ctx(),
+        );
+
+        scenario.return_to_sender(prize_pool_cap);
+    };
 
     // iterate phase from liquidity providing to ticketing phase
-    let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
-    clock.increment_for_testing(PHASE_DURATION);
-    phase_info_cap.next(&mut phase_info, &clock, scenario.ctx());
-    scenario.return_to_sender(phase_info_cap);
+    scenario.next_tx(authority);
+    {
+        let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
 
-    scenario.return_to_sender(prize_pool_cap);
+        clock.increment_for_testing(PHASE_DURATION);
+        phase_info_cap.next(&mut phase_info, &clock, scenario.ctx());
+
+        scenario.return_to_sender(phase_info_cap);
+    };
 
     (scenario, clock, phase_info, pool_registry, lounge_registry, prize_pool)
 }
