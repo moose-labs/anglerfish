@@ -2,17 +2,8 @@
 
 [move]
 version = 3
-manifest_digest = "6BBABFC6E95033C9CAA7497341DE6A93411B3CA011501614699EC04FA38003A0"
-deps_digest = "3C4103934B1E040BB6B23F1D610B4EF9F2F1166A50A104EADCF77467C004C600"
-dependencies = [
-  { id = "Math", name = "Math" },
-  { id = "Sui", name = "Sui" },
-]
-
-[[move.package]]
-id = "Math"
-source = { local = "../libs/math" }
-
+manifest_digest = "9D608C34BECF1AD7DF04C4E74810E2489E2A10E535DC871BF245BD0A76779A86"
+deps_digest = "F8BBB0CCB2491CA29A3DF03D6F92277A4F3574266507ACD77214D37ECA3F3082"
 dependencies = [
   { id = "Sui", name = "Sui" },
 ]
@@ -31,13 +22,13 @@ dependencies = [
 
 [move.toolchain-version]
 compiler-version = "1.46.3"
-edition = "2024.alpha"
+edition = "2024.beta"
 flavor = "sui"
 
 [env]
 
 [env.localnet]
 chain-id = "d04683d9"
-original-published-id = "0xdf057732662ebe35f2170bb1ddb788609f469bbe249d6114914b5939ef2749ce"
-latest-published-id = "0xdf057732662ebe35f2170bb1ddb788609f469bbe249d6114914b5939ef2749ce"
+original-published-id = "0xdf2477e4ca3e159c5c56980641db1a09dc97d89b63f44abaf21799a90bf46722"
+latest-published-id = "0xdf2477e4ca3e159c5c56980641db1a09dc97d89b63f44abaf21799a90bf46722"
 published-version = "1"
