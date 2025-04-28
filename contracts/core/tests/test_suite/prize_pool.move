@@ -20,7 +20,7 @@ const PRIZE_POOL_LP_FEE_BPS: u64 = 2500;
 const PRIZE_POOL_PROTOCOL_FEE_BPS: u64 = 500;
 
 /// build_prize_pool_test_suite
-/// Set pool factory for prize pool and also deposit liquidity into the pools.
+/// Set pool registry for prize pool and also deposit liquidity into the pools.
 public fun build_prize_pool_test_suite(
     authority: address,
 ): (Scenario, Clock, PhaseInfo, PoolRegistry, LoungeRegistry, PrizePool) {

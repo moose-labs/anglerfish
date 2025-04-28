@@ -103,7 +103,7 @@ public fun create_pool<T>(
     bag::add(&mut pool_registry.pools, risk_ratio_bps, pool)
 }
 
-/// Pool Factory implementation
+/// Pool Registry implementation
 ///
 
 public fun get_total_reserves_value<T>(self: &PoolRegistry): u64 {
@@ -158,7 +158,7 @@ public fun get_pool_risk_ratios(self: &PoolRegistry): vector<u64> {
     self.pool_ids.keys()
 }
 
-/// Pool Factory inner functions
+/// Pool Registry inner functions
 ///
 
 fun inner_get_pool_risk_ratios_with_len(self: &PoolRegistry): (vector<u64>, u64) {

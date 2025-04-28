@@ -312,7 +312,7 @@ public fun distribute<T>(
     phase_info.assert_distributing_phase();
 
     prize_pool.assert_valid_pool_registry(pool_registry);
-    prize_pool.assert_valid_longe_factory(lounge_registry);
+    prize_pool.assert_valid_longe_registry(lounge_registry);
 
     let current_round = phase_info.get_current_round();
     let round = prize_pool.rounds.borrow_mut(current_round);
@@ -495,7 +495,7 @@ fun assert_valid_pool_registry(self: &PrizePool, pool_registry: &PoolRegistry) {
     assert!(object::id(pool_registry) == self.pool_registry.borrow(), ErrorInvalidPoolRegistry);
 }
 
-fun assert_valid_longe_factory(self: &PrizePool, lounge_registry: &LoungeRegistry) {
+fun assert_valid_longe_registry(self: &PrizePool, lounge_registry: &LoungeRegistry) {
     assert!(self.lounge_registry.is_some(), ErrorInvalidLoungeRegistry);
     assert!(
         object::id(lounge_registry) == self.lounge_registry.borrow(),
