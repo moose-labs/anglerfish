@@ -17,6 +17,7 @@ use sui::random::Random;
 use sui::sui::SUI;
 use sui::test_scenario;
 use sui::test_utils;
+use sui::coin::Coin;
 
 const AUTHORITY: address = @0xAAA;
 const UNAUTHORIZED: address = @0xFFF;
@@ -577,20 +578,33 @@ fun test_draw_on_no_liquidity() {
     scenario.next_tx(AUTHORITY);
     {
         let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
-        let protocol_fee_coin = prize_pool_cap.claim_protocol_fee<SUI>(
+        prize_pool_cap.claim_protocol_fee<SUI>(
             &mut prize_pool,
             scenario.ctx(),
         );
-        assert!(protocol_fee_coin.value() == 50000);
 
-        let treasury_fee_coin = prize_pool_cap.claim_treasury_reserve<SUI>(
+        scenario.next_tx(AUTHORITY);
+        {
+            // Check Coin<SUI> transferred to AUTHORITY
+            let redeem_coin = test_scenario::take_from_sender<Coin<SUI>>(&scenario);
+            assert!(redeem_coin.value() == 50000, 0); // Verify transferred coin value
+            redeem_coin.burn_for_testing();
+        };
+
+
+        prize_pool_cap.claim_treasury_reserve<SUI>(
             &mut prize_pool,
             scenario.ctx(),
         );
-        assert!(treasury_fee_coin.value() == 700000);
 
-        test_utils::destroy(protocol_fee_coin);
-        test_utils::destroy(treasury_fee_coin);
+        scenario.next_tx(AUTHORITY);
+        {
+            // Check Coin<SUI> transferred to AUTHORITY
+            let redeem_coin = test_scenario::take_from_sender<Coin<SUI>>(&scenario);
+            assert!(redeem_coin.value() == 700000, 0); // Verify transferred coin value
+            redeem_coin.burn_for_testing();
+        };
+
         scenario.return_to_sender(prize_pool_cap);
     };
 
@@ -822,20 +836,32 @@ fun test_player_win_scenario() {
     scenario.next_tx(AUTHORITY);
     {
         let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
-        let protocol_fee_coin = prize_pool_cap.claim_protocol_fee<SUI>(
+        prize_pool_cap.claim_protocol_fee<SUI>(
             &mut prize_pool,
             scenario.ctx(),
         );
-        assert!(protocol_fee_coin.value() == 50000);
 
-        let treasury_fee_coin = prize_pool_cap.claim_treasury_reserve<SUI>(
+        scenario.next_tx(AUTHORITY);
+        {
+            // Check Coin<SUI> transferred to AUTHORITY
+            let redeem_coin = test_scenario::take_from_sender<Coin<SUI>>(&scenario);
+            assert!(redeem_coin.value() == 50000, 0); // Verify transferred coin value
+            redeem_coin.burn_for_testing();
+        };
+
+        prize_pool_cap.claim_treasury_reserve<SUI>(
             &mut prize_pool,
             scenario.ctx(),
         );
-        assert!(treasury_fee_coin.value() == 700000);
 
-        test_utils::destroy(protocol_fee_coin);
-        test_utils::destroy(treasury_fee_coin);
+        scenario.next_tx(AUTHORITY);
+        {
+            // Check Coin<SUI> transferred to AUTHORITY
+            let redeem_coin = test_scenario::take_from_sender<Coin<SUI>>(&scenario);
+            assert!(redeem_coin.value() == 700000, 0); // Verify transferred coin value
+            redeem_coin.burn_for_testing();
+        };
+
         scenario.return_to_sender(prize_pool_cap);
     };
 
@@ -978,20 +1004,32 @@ fun test_lp_win_scenario() {
     scenario.next_tx(AUTHORITY);
     {
         let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
-        let protocol_fee_coin = prize_pool_cap.claim_protocol_fee<SUI>(
+        prize_pool_cap.claim_protocol_fee<SUI>(
             &mut prize_pool,
             scenario.ctx(),
         );
-        assert!(protocol_fee_coin.value() == 50000);
 
-        let treasury_fee_coin = prize_pool_cap.claim_treasury_reserve<SUI>(
+        scenario.next_tx(AUTHORITY);
+        {
+            // Check Coin<SUI> transferred to AUTHORITY
+            let redeem_coin = test_scenario::take_from_sender<Coin<SUI>>(&scenario);
+            assert!(redeem_coin.value() == 50000, 0); // Verify transferred coin value
+            redeem_coin.burn_for_testing();
+        };
+
+        prize_pool_cap.claim_treasury_reserve<SUI>(
             &mut prize_pool,
             scenario.ctx(),
         );
-        assert!(treasury_fee_coin.value() == 700000);
 
-        test_utils::destroy(protocol_fee_coin);
-        test_utils::destroy(treasury_fee_coin);
+        scenario.next_tx(AUTHORITY);
+        {
+            // Check Coin<SUI> transferred to AUTHORITY
+            let redeem_coin = test_scenario::take_from_sender<Coin<SUI>>(&scenario);
+            assert!(redeem_coin.value() == 700000, 0); // Verify transferred coin value
+            redeem_coin.burn_for_testing();
+        };
+
         scenario.return_to_sender(prize_pool_cap);
     };
 

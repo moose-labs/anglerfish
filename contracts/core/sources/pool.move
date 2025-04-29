@@ -73,7 +73,7 @@ public fun init_for_testing(ctx: &mut TxContext) {
     init(ctx);
 }
 
-public fun create_pool<T>(
+public entry fun create_pool<T>(
     _self: &PoolCap, // Enforce to use by pool cap capability
     pool_registry: &mut PoolRegistry,
     phase_info: &PhaseInfo,
@@ -195,28 +195,15 @@ public entry fun deposit<T>(
     let depositor = tx_context::sender(ctx);
     let deposit_amount = deposit_coin.value();
 
-    // TODO: introduce new function, coin_to_share
-    let reserve = pool.reserves.value();
-    let shares_to_mint = if (reserve == 0) {
-        deposit_amount
-    } else {
-        mul_div(deposit_amount, pool.total_shares, reserve)
-    };
-
+    // calculate share to mint
+    let shares_to_mint = pool.coins_to_shares(deposit_amount);
     assert!(shares_to_mint > 0, ErrorTooSmallToMint);
 
-    // TODO: introduce new function, update total shares
-    pool.total_shares = pool.total_shares + shares_to_mint;
+    // update pool shares
+    pool.inner_update_shares_for_deposit(depositor, shares_to_mint);
 
+    // update pool reserves
     pool.inner_put_reserves_balance(deposit_coin);
-
-    // TODO: introduce new function, update user shares
-    if (table::contains<address, u64>(&pool.user_shares, depositor)) {
-        let deposited = table::borrow_mut<address, u64>(&mut pool.user_shares, depositor);
-        *deposited = *deposited + shares_to_mint;
-    } else {
-        table::add<address, u64>(&mut pool.user_shares, depositor, shares_to_mint);
-    }
 }
 
 public entry fun redeem<T>(
@@ -236,20 +223,13 @@ public entry fun redeem<T>(
     assert!(redeem_shares_amount > 0, ErrorInsufficientShares);
     assert!(redeem_shares_amount <= user_shares_amount, ErrorTooLargeToRedeem);
 
-    // TODO: intruduct new function, shares_to_coin
-    let total_liquidity = pool.reserves.value();
-    let total_shares = pool.total_shares;
-    let redeem_value = mul_div(redeem_shares_amount, total_liquidity, total_shares);
+    // Calculate redemption value before updating reserve value
+    let redeem_value = pool.shares_to_coins(redeem_shares_amount);
 
-    // Update user shares
-    // TODO: intruduct new function, update_users_share
-    let user_shares = pool.user_shares.borrow_mut(redeemer);
-    *user_shares = *user_shares - redeem_shares_amount;
+    // update pool reserves
+    pool.inner_update_shares_for_redemption(redeemer, redeem_shares_amount);
 
-    // Update total shares
-    // TODO: intruduct new function, update_total_shares
-    pool.total_shares = pool.total_shares - redeem_shares_amount;
-
+    // transfer coin to redeemer
     let coin = pool.inner_take_reserves_balance(redeem_value, ctx);
     transfer::public_transfer(coin, redeemer);
 }
@@ -321,6 +301,23 @@ public fun get_user_shares<T>(self: &Pool<T>, user: address): u64 {
     }
 }
 
+public fun coins_to_shares<T>(self: &Pool<T>, amount: u64): u64 {
+    let reserve = self.reserves.value();
+
+    if (reserve == 0) {
+        amount // default 1:1 coin
+    } else {
+        mul_div(amount, self.total_shares, reserve)
+    }
+}
+
+public fun shares_to_coins<T>(self: &Pool<T>, shares: u64): u64 {
+    let reserve = self.reserves.value();
+    mul_div(shares, reserve, self.total_shares)
+}
+
+
+
 /// Inner functions
 ///
 
@@ -334,6 +331,28 @@ fun inner_take_reserves_balance<T>(self: &mut Pool<T>, amount: u64, ctx: &mut Tx
     self.total_reserves_value = self.total_reserves_value - amount;
     let coin = from_balance(self.reserves.split(amount), ctx);
     coin
+}
+
+public fun inner_update_shares_for_redemption<T>(self: &mut Pool<T>, redeemer: address, share_amount: u64) {
+    // Update user shares
+    let user_shares = self.user_shares.borrow_mut(redeemer);
+    *user_shares = *user_shares - share_amount;
+
+    // Update total shares
+    self.total_shares = self.total_shares - share_amount;
+}
+
+public fun inner_update_shares_for_deposit<T>(self: &mut Pool<T>, depositor: address, share_amount: u64) {
+    // Update user shares
+    if (table::contains<address, u64>(&self.user_shares, depositor)) {
+        let deposited = table::borrow_mut<address, u64>(&mut self.user_shares, depositor);
+        *deposited = *deposited + share_amount;
+    } else {
+        table::add<address, u64>(&mut self.user_shares, depositor, share_amount);
+    };
+
+    // Update total shares
+    self.total_shares = self.total_shares + share_amount;
 }
 
 /// Assertions

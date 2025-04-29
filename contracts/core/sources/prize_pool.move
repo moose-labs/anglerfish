@@ -74,7 +74,7 @@ fun init(ctx: &mut TxContext) {
 
 /// Capability to manage the prize pool
 
-public fun set_pool_registry(
+public entry fun set_pool_registry(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
     pool_registry_id: ID,
@@ -83,7 +83,7 @@ public fun set_pool_registry(
     prize_pool.pool_registry = option::some(pool_registry_id);
 }
 
-public fun set_lounge_registry(
+public entry fun set_lounge_registry(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
     lounge_registry_id: ID,
@@ -92,7 +92,7 @@ public fun set_lounge_registry(
     prize_pool.lounge_registry = option::some(lounge_registry_id);
 }
 
-public fun set_max_players(
+public entry fun set_max_players(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
     max_players: u64,
@@ -101,7 +101,7 @@ public fun set_max_players(
     prize_pool.max_players = max_players;
 }
 
-public fun set_price_per_ticket(
+public entry fun set_price_per_ticket(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
     price_per_ticket: u64,
@@ -110,7 +110,7 @@ public fun set_price_per_ticket(
     prize_pool.price_per_ticket = price_per_ticket;
 }
 
-public fun set_lp_fee_bps(
+public entry fun set_lp_fee_bps(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
     lp_fee_bps: u64,
@@ -120,7 +120,7 @@ public fun set_lp_fee_bps(
     prize_pool.lp_fee_bps = lp_fee_bps;
 }
 
-public fun set_protocol_fee_bps(
+public entry fun set_protocol_fee_bps(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
     protocol_fee_bps: u64,
@@ -130,24 +130,24 @@ public fun set_protocol_fee_bps(
     prize_pool.protocol_fee_bps = protocol_fee_bps;
 }
 
-public fun claim_protocol_fee<T>(
+public entry fun claim_protocol_fee<T>(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
     ctx: &mut TxContext,
-): Coin<T> {
+) {
     let protocol_fee_reserves = prize_pool.inner_get_protocol_fee_reserves_balance_mut<T>();
     let fee_coin = from_balance(protocol_fee_reserves.withdraw_all(), ctx);
-    fee_coin
+    transfer::public_transfer(fee_coin, tx_context::sender(ctx));
 }
 
-public fun claim_treasury_reserve<T>(
+public entry fun claim_treasury_reserve<T>(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
     ctx: &mut TxContext,
-): Coin<T> {
+) {
     let reserves = prize_pool.inner_get_treasury_reserves_balance_mut<T>();
     let fee_coin = from_balance(reserves.withdraw_all(), ctx);
-    fee_coin
+    transfer::public_transfer(fee_coin, tx_context::sender(ctx));
 }
 
 public fun get_pool_registry(self: &PrizePool): Option<ID> {
@@ -215,7 +215,7 @@ public fun get_round(self: &PrizePool, round: u64): &Round {
     self.rounds.borrow(round)
 }
 
-public fun purchase_ticket<T>(
+public entry fun purchase_ticket<T>(
     self: &mut PrizePool,
     phase_info: &PhaseInfo,
     purchase_coin: Coin<T>,
@@ -297,7 +297,7 @@ entry fun draw<T>(
     phase_info_cap.next(phase_info, clock, ctx);
 }
 
-public fun distribute<T>(
+public entry fun distribute<T>(
     _self: &PrizePoolCap,
     pool_cap: &PoolCap,
     lounge_cap: &LoungeCap,
