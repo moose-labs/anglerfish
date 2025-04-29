@@ -180,7 +180,7 @@ public fun set_deposit_enabled<T>(
     pool.is_deposit_enabled = enabled;
 }
 
-public fun deposit<T>(
+public entry fun deposit<T>(
     pool_registry: &mut PoolRegistry,
     phase_info: &PhaseInfo,
     risk_ratio_bps: u64,
@@ -195,6 +195,7 @@ public fun deposit<T>(
     let depositor = tx_context::sender(ctx);
     let deposit_amount = deposit_coin.value();
 
+    // TODO: introduce new function, coin_to_share
     let reserve = pool.reserves.value();
     let shares_to_mint = if (reserve == 0) {
         deposit_amount
@@ -204,10 +205,12 @@ public fun deposit<T>(
 
     assert!(shares_to_mint > 0, ErrorTooSmallToMint);
 
+    // TODO: introduce new function, update total shares
     pool.total_shares = pool.total_shares + shares_to_mint;
 
     pool.inner_put_reserves_balance(deposit_coin);
 
+    // TODO: introduce new function, update user shares
     if (table::contains<address, u64>(&pool.user_shares, depositor)) {
         let deposited = table::borrow_mut<address, u64>(&mut pool.user_shares, depositor);
         *deposited = *deposited + shares_to_mint;
@@ -216,13 +219,13 @@ public fun deposit<T>(
     }
 }
 
-public fun redeem<T>(
+public entry fun redeem<T>(
     pool_registry: &mut PoolRegistry,
     phase_info: &PhaseInfo,
     risk_ratio_bps: u64,
     redeem_shares_amount: u64,
     ctx: &mut TxContext,
-): Coin<T> {
+) {
     phase_info.assert_liquidity_providing_phase();
 
     let pool = get_pool_by_risk_ratio_mut<T>(pool_registry, risk_ratio_bps);
@@ -233,18 +236,22 @@ public fun redeem<T>(
     assert!(redeem_shares_amount > 0, ErrorInsufficientShares);
     assert!(redeem_shares_amount <= user_shares_amount, ErrorTooLargeToRedeem);
 
+    // TODO: intruduct new function, shares_to_coin
     let total_liquidity = pool.reserves.value();
     let total_shares = pool.total_shares;
     let redeem_value = mul_div(redeem_shares_amount, total_liquidity, total_shares);
 
     // Update user shares
+    // TODO: intruduct new function, update_users_share
     let user_shares = pool.user_shares.borrow_mut(redeemer);
     *user_shares = *user_shares - redeem_shares_amount;
 
     // Update total shares
+    // TODO: intruduct new function, update_total_shares
     pool.total_shares = pool.total_shares - redeem_shares_amount;
 
-    pool.inner_take_reserves_balance(redeem_value, ctx)
+    let coin = pool.inner_take_reserves_balance(redeem_value, ctx);
+    transfer::public_transfer(coin, redeemer);
 }
 
 public(package) fun get_pool_by_risk_ratio_mut<T>(
