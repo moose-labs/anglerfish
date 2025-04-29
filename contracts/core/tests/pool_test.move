@@ -335,16 +335,15 @@ fun test_pool_deposit_redeem_shares() {
         assert!(pool.get_reserves().value() == 134);
         assert!(pool.get_total_shares() == 50);
         assert!(pool.get_prize_reserves_value() == 67); // 50% of 134
+    };
 
-        // Advance scenario to reflect transfer
-        scenario.next_tx(USER_1);
-        {
-            // Check Coin<SUI> transferred to USER_1
-            let redeem_coin = test_scenario::take_from_sender<Coin<SUI>>(&scenario);
-            assert!(redeem_coin.value() == 266, 0); // Verify transferred coin value
-            redeem_coin.burn_for_testing();
-        };
-
+    // Advance scenario to reflect transfer
+    scenario.next_tx(USER_1);
+    {
+        // Check Coin<SUI> transferred to USER_1
+        let redeem_coin = test_scenario::take_from_sender<Coin<SUI>>(&scenario);
+        assert!(redeem_coin.value() == 266, 0); // Verify transferred coin value
+        redeem_coin.burn_for_testing();
     };
 
     // Should able to redeem back with full shares
@@ -366,15 +365,15 @@ fun test_pool_deposit_redeem_shares() {
         assert!(pool.get_reserves().value() == 0);
         assert!(pool.get_total_shares() == 0);
         assert!(pool.get_prize_reserves_value() == 0);
+    };
 
-        // Advance scenario to reflect transfer
-        scenario.next_tx(USER_2);
-        {
-            // Check Coin<SUI> transferred to USER_2
-            let redeem_coin = test_scenario::take_from_sender<Coin<SUI>>(&scenario);
-            assert!(redeem_coin.value() == 134, 0); // Verify transferred coin value
-            redeem_coin.burn_for_testing();
-        };
+    // Advance scenario to reflect transfer
+    scenario.next_tx(USER_2);
+    {
+        // Check Coin<SUI> transferred to USER_2
+        let redeem_coin = test_scenario::take_from_sender<Coin<SUI>>(&scenario);
+        assert!(redeem_coin.value() == 134, 0); // Verify transferred coin value
+        redeem_coin.burn_for_testing();
     };
 
     test_scenario::return_shared(phase_info);

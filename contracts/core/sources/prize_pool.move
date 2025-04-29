@@ -18,6 +18,7 @@ const ErrorInvalidLoungeRegistry: u64 = 3;
 const ErrorPurchaseAmountTooLow: u64 = 4;
 const ErrorLpFeeAmountTooHigh: u64 = 5;
 const ErrorProtocolFeeAmountTooHigh: u64 = 6;
+const ErrorExcessiveFeeCharged: u64 = 6;
 
 const TREASURY_RESERVES_KEY: vector<u8> = b"treasury_reserves";
 const LP_FEE_RESERVES_KEY: vector<u8> = b"lp_fee_reserves";
@@ -238,21 +239,33 @@ public entry fun purchase_ticket<T>(
     let ticket_amount = purchase_value / self.price_per_ticket;
     assert!(ticket_amount > 0, ErrorPurchaseAmountTooLow);
 
+    // Calculate exact cost for tickets
+    let ticket_cost = ticket_amount * self.price_per_ticket;
+
     let mut purchase_coin = purchase_coin;
 
     // Transfer fee coin to lp fee reserves
-    let lp_fee_amount = self.inner_get_lp_fee_amount(purchase_value);
+    let lp_fee_amount = self.inner_get_lp_fee_amount(ticket_cost);
     let lp_fee_reserves = self.inner_get_lp_fee_reserves_balance_mut<T>();
     coin::put(lp_fee_reserves, purchase_coin.split(lp_fee_amount, ctx));
 
     // Transfer protocol fee coin to protocol fee reserves
-    let protocol_fee_amount = self.inner_get_protocol_fee_amount(purchase_value);
+    let protocol_fee_amount = self.inner_get_protocol_fee_amount(ticket_cost);
     let protocol_fee_reserves = self.inner_get_protocol_fee_reserves_balance_mut<T>();
     coin::put(protocol_fee_reserves, purchase_coin.split(protocol_fee_amount, ctx));
 
     // Transfer ticket coin to treasury reserves
+    assert!(ticket_cost > lp_fee_amount + protocol_fee_amount, ErrorExcessiveFeeCharged);
+    let ticket_cost_after_fees = ticket_cost - lp_fee_amount - protocol_fee_amount;
     let treasury_reserves = self.inner_get_treasury_reserves_balance_mut<T>();
-    coin::put(treasury_reserves, purchase_coin);
+    coin::put(treasury_reserves, purchase_coin.split(ticket_cost_after_fees, ctx));
+
+    // Refund excess
+    if (purchase_coin.value() > 0) {
+        transfer::public_transfer(purchase_coin, tx_context::sender(ctx));
+    } else {
+        purchase_coin.destroy_zero();
+    };
 
     // Check if the buyer already exists in the current round
     let buyer = tx_context::sender(ctx);

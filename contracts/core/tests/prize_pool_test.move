@@ -371,6 +371,14 @@ fun test_purchase_tickets_should_floored_to_ticket_price() {
         assert!(prize_pool.get_total_purchased_tickets(&phase_info) == 2);
     };
 
+    scenario.next_tx(USER1);
+    {
+        // Check refund amount (50 = 250 - (2 * 100))
+        let redeem_coin = test_scenario::take_from_sender<Coin<SUI>>(&scenario);
+        assert!(redeem_coin.value() == 50, 0); // Verify transferred coin value
+        redeem_coin.burn_for_testing();
+    };
+
     test_scenario::return_shared(phase_info);
     test_scenario::return_shared(pool_registry);
     test_scenario::return_shared(lounge_registry);
