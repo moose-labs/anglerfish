@@ -300,8 +300,7 @@ entry fun draw<T>(
 
     // Store the winner in the current round
     let round = prize_pool.rounds.borrow_mut(current_round);
-    round.set_winner(winner_player);
-    round.set_prize_amount(prize_reserves_value);
+    round.record_drawing_result(clock, winner_player, prize_reserves_value);
 
     // Instantly move to the Distributing phase
     phase_info_cap.next(phase_info, clock, ctx);
