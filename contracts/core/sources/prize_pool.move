@@ -299,7 +299,9 @@ entry fun draw<T>(
     let winner_player = prize_pool.inner_find_ticket_winner_address(phase_info, ticket_number);
 
     // Store the winner in the current round
-    prize_pool.rounds.borrow_mut(current_round).set_winner(winner_player);
+    let round = prize_pool.rounds.borrow_mut(current_round);
+    round.set_winner(winner_player);
+    round.set_prize_amount(prize_reserves_value);
 
     // Instantly move to the Distributing phase
     phase_info_cap.next(phase_info, clock, ctx);

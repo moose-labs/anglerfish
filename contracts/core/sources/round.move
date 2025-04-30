@@ -10,6 +10,8 @@ public struct Round has store {
     players: VecSet<address>,
     /// Winner address
     winner: Option<address>,
+    /// The prize amount for the round
+    prize_amount: u64,
 }
 
 public fun new(ctx: &mut TxContext): Round {
@@ -17,6 +19,7 @@ public fun new(ctx: &mut TxContext): Round {
         player_tickets: table::new(ctx),
         players: vec_set::empty(),
         winner: option::none(),
+        prize_amount: 0,
     }
 }
 
@@ -32,6 +35,10 @@ public(package) fun add_player_ticket(self: &mut Round, player: address, amount:
 
 public(package) fun set_winner(self: &mut Round, winner: Option<address>) {
     self.winner = winner;
+}
+
+public(package) fun set_prize_amount(self: &mut Round, prize_amount: u64) {
+    self.prize_amount = prize_amount;
 }
 
 public(package) fun find_ticket_winner_address(self: &Round, ticket_number: u64): Option<address> {
@@ -61,6 +68,10 @@ public fun contains(self: &Round, player: &address): bool {
 
 public fun get_winner(self: &Round): Option<address> {
     self.winner
+}
+
+public fun get_prize_amount(self: &Round): u64 {
+    self.prize_amount
 }
 
 public fun get_number_of_players(self: &Round): u64 {
