@@ -589,7 +589,9 @@ fun test_draw_on_no_liquidity() {
     // Check winner record still the same
     scenario.next_tx(AUTHORITY);
     {
-        assert!(prize_pool.get_round(1).get_winner() == option::some(USER1));
+        let round = prize_pool.get_round(1);
+        assert!(round.get_winner() == option::some(USER1));
+        assert!(round.get_prize_amount() == 0);
     };
 
     // Check the lounge created
@@ -600,7 +602,7 @@ fun test_draw_on_no_liquidity() {
         assert!(lounge.get_prize_reserves_value<SUI>() == 0);
     };
 
-        // Check the fee distribution
+    // Check the fee distribution
     scenario.next_tx(AUTHORITY);
     {
         let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
@@ -716,7 +718,9 @@ fun test_draw_on_no_ticket_purchased() {
     // Check variables
     scenario.next_tx(AUTHORITY);
     {
-        assert!(prize_pool.get_round(1).get_winner() == option::none());
+        let round = prize_pool.get_round(1);
+        assert!(round.get_winner() == option::none());
+        assert!(round.get_prize_amount() == 2400000);
         assert!(lounge_registry.is_lounge_available(1) == false);
         assert!(prize_pool.get_lp_fee_reserves_value<SUI>() == 0);
         assert!(prize_pool.get_protocol_fee_reserves_value<SUI>() == 0);
@@ -832,7 +836,9 @@ fun test_player_win_scenario() {
     // Check winner record still the same
     scenario.next_tx(AUTHORITY);
     {
-        assert!(prize_pool.get_round(1).get_winner() == option::some(USER1));
+        let round = prize_pool.get_round(1);
+        assert!(round.get_winner() == option::some(USER1));
+        assert!(round.get_prize_amount() == 2400000);
     };
 
     // Check the lounge created
@@ -848,7 +854,7 @@ fun test_player_win_scenario() {
         test_utils::destroy(prize_coin);
     };
 
-        // Check the fee distribution
+    // Check the fee distribution
     scenario.next_tx(AUTHORITY);
     {
         let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
@@ -998,7 +1004,9 @@ fun test_lp_win_scenario() {
     // Check winner record still the same
     scenario.next_tx(AUTHORITY);
     {
-        assert!(prize_pool.get_round(1).get_winner() == option::none());
+        let round = prize_pool.get_round(1);
+        assert!(round.get_winner() == option::none());
+        assert!(round.get_prize_amount() == 2400000);
     };
 
     // Check the lounge created
@@ -1007,7 +1015,7 @@ fun test_lp_win_scenario() {
         assert!(lounge_registry.is_lounge_available(1) == false);
     };
 
-        // Check the fee distribution
+    // Check the fee distribution
     scenario.next_tx(AUTHORITY);
     {
         let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
