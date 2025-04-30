@@ -73,7 +73,7 @@ public fun init_for_testing(ctx: &mut TxContext) {
     init(ctx);
 }
 
-public entry fun create_pool<T>(
+public fun create_pool<T>(
     _self: &PoolCap, // Enforce to use by pool cap capability
     pool_registry: &mut PoolRegistry,
     phase_info: &PhaseInfo,
@@ -180,7 +180,7 @@ public fun set_deposit_enabled<T>(
     pool.is_deposit_enabled = enabled;
 }
 
-public entry fun deposit<T>(
+public fun deposit<T>(
     pool_registry: &mut PoolRegistry,
     phase_info: &PhaseInfo,
     risk_ratio_bps: u64,
@@ -206,13 +206,13 @@ public entry fun deposit<T>(
     pool.inner_put_reserves_balance(deposit_coin);
 }
 
-public entry fun redeem<T>(
+public fun redeem<T>(
     pool_registry: &mut PoolRegistry,
     phase_info: &PhaseInfo,
     risk_ratio_bps: u64,
     redeem_shares_amount: u64,
     ctx: &mut TxContext,
-) {
+): Coin<T> {
     phase_info.assert_liquidity_providing_phase();
 
     let pool = get_pool_by_risk_ratio_mut<T>(pool_registry, risk_ratio_bps);
@@ -231,7 +231,7 @@ public entry fun redeem<T>(
 
     // transfer coin to redeemer
     let coin = pool.inner_take_reserves_balance(redeem_value, ctx);
-    transfer::public_transfer(coin, redeemer);
+    coin
 }
 
 public(package) fun get_pool_by_risk_ratio_mut<T>(

@@ -190,12 +190,13 @@ fun test_cannot_redeem_zero_shares_amount() {
 
     scenario.next_tx(USER_1);
     {
-        pool_registry.redeem<SUI>(
+        let coin = pool_registry.redeem<SUI>(
             &phase_info,
             TEST_POOL_RISK,
             0,
             scenario.ctx(),
         );
+        coin.burn_for_testing();
     };
 
     test_scenario::return_shared(phase_info);
@@ -224,13 +225,13 @@ fun test_cannot_redeem_greater_than_deposit() {
 
     scenario.next_tx(USER_1);
     {
-         pool_registry.redeem<SUI>(
+        let coin = pool_registry.redeem<SUI>(
             &phase_info,
             TEST_POOL_RISK,
             200,
             scenario.ctx(),
         );
-
+        coin.burn_for_testing();
     };
 
     test_scenario::return_shared(phase_info);
@@ -323,7 +324,7 @@ fun test_pool_deposit_redeem_shares() {
         let pool = pool_registry.get_pool_by_risk_ratio<SUI>(TEST_POOL_RISK);
         let shares_amount = pool.get_user_shares(USER_1);
 
-         pool_registry.redeem<SUI>(
+        let redeem_coin = pool_registry.redeem<SUI>(
             &phase_info,
             TEST_POOL_RISK,
             shares_amount,
@@ -332,17 +333,12 @@ fun test_pool_deposit_redeem_shares() {
 
         let pool = pool_registry.get_pool_by_risk_ratio<SUI>(TEST_POOL_RISK);
         assert!(pool.get_user_shares(USER_1) == 0);
+        assert!(redeem_coin.value() == 266);
+
         assert!(pool.get_reserves().value() == 134);
         assert!(pool.get_total_shares() == 50);
         assert!(pool.get_prize_reserves_value() == 67); // 50% of 134
-    };
 
-    // Advance scenario to reflect transfer
-    scenario.next_tx(USER_1);
-    {
-        // Check Coin<SUI> transferred to USER_1
-        let redeem_coin = test_scenario::take_from_sender<Coin<SUI>>(&scenario);
-        assert!(redeem_coin.value() == 266, 0); // Verify transferred coin value
         redeem_coin.burn_for_testing();
     };
 
@@ -352,7 +348,7 @@ fun test_pool_deposit_redeem_shares() {
         let pool = pool_registry.get_pool_by_risk_ratio<SUI>(TEST_POOL_RISK);
         let shares_amount = pool.get_user_shares(USER_2);
 
-        pool_registry.redeem<SUI>(
+        let redeem_coin = pool_registry.redeem<SUI>(
             &phase_info,
             TEST_POOL_RISK,
             shares_amount,
@@ -361,18 +357,12 @@ fun test_pool_deposit_redeem_shares() {
 
         let pool = pool_registry.get_pool_by_risk_ratio<SUI>(TEST_POOL_RISK);
         assert!(pool.get_user_shares(USER_2) == 0);
+        assert!(redeem_coin.value() == 134);
 
         assert!(pool.get_reserves().value() == 0);
         assert!(pool.get_total_shares() == 0);
         assert!(pool.get_prize_reserves_value() == 0);
-    };
 
-    // Advance scenario to reflect transfer
-    scenario.next_tx(USER_2);
-    {
-        // Check Coin<SUI> transferred to USER_2
-        let redeem_coin = test_scenario::take_from_sender<Coin<SUI>>(&scenario);
-        assert!(redeem_coin.value() == 134, 0); // Verify transferred coin value
         redeem_coin.burn_for_testing();
     };
 
