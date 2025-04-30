@@ -234,7 +234,10 @@ fun test_cannot_purchase_ticket_outside_ticketing_phase() {
     scenario.next_tx(USER1);
     {
         let coin = from_balance(create_balance_for_testing<SUI>(100), scenario.ctx());
-        prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
+        let refund_coin = prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
+
+        assert!(refund_coin.value() == 50);
+        refund_coin.burn_for_testing()
     };
 
     test_scenario::return_shared(phase_info);
@@ -272,13 +275,19 @@ fun test_cannot_purchase_ticket_while_pool_reached_max_players() {
     scenario.next_tx(USER1);
     {
         let coin = from_balance(create_balance_for_testing<SUI>(100), scenario.ctx());
-        prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
+        let refund_coin = prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
+
+        assert!(refund_coin.value() == 0);
+        refund_coin.burn_for_testing()
     };
 
     scenario.next_tx(USER2);
     {
         let coin = from_balance(create_balance_for_testing<SUI>(100), scenario.ctx());
-        prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
+        let refund_coin = prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
+
+        assert!(refund_coin.value() == 0);
+        refund_coin.burn_for_testing()
     };
 
     test_scenario::return_shared(phase_info);
@@ -306,7 +315,10 @@ fun test_cannot_purchase_ticket_with_zero_value() {
     scenario.next_tx(USER1);
     {
         let coin = from_balance(create_balance_for_testing<SUI>(0), scenario.ctx());
-        prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
+        let refund_coin = prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
+
+        assert!(refund_coin.value() == 0);
+        refund_coin.burn_for_testing()
     };
 
     test_scenario::return_shared(phase_info);
@@ -336,7 +348,10 @@ fun test_cannot_purchase_ticket_with_zero_ticket() {
     scenario.next_tx(USER1);
     {
         let coin = from_balance(create_balance_for_testing<SUI>(50), scenario.ctx());
-        prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
+        let refund_coin = prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
+
+        assert!(refund_coin.value() == 50);
+        refund_coin.burn_for_testing()
     };
 
     test_scenario::return_shared(phase_info);
@@ -365,9 +380,12 @@ fun test_purchase_tickets_should_floored_to_ticket_price() {
     scenario.next_tx(USER1);
     {
         let coin = from_balance(create_balance_for_testing<SUI>(250), scenario.ctx());
-        prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
+        let refund_coin = prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
         assert!(prize_pool.get_player_tickets(&phase_info, USER1) == 2); // 2 tickets purchased, not 2.5
         assert!(prize_pool.get_total_purchased_tickets(&phase_info) == 2);
+
+        assert!(refund_coin.value() == 50);
+        refund_coin.burn_for_testing()
     };
 
     test_scenario::return_shared(phase_info);
@@ -396,7 +414,7 @@ fun test_fee_distributions() {
     scenario.next_tx(USER1);
     {
         let coin = from_balance(create_balance_for_testing<SUI>(1000), scenario.ctx());
-        prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
+        let refund_coin = prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
 
         assert!(prize_pool.get_player_tickets(&phase_info, USER1) == 10);
         assert!(prize_pool.get_total_purchased_tickets(&phase_info) == 10);
@@ -404,12 +422,15 @@ fun test_fee_distributions() {
         assert!(prize_pool.get_lp_fee_reserves_value<SUI>() == 250); // 25% of 1000
         assert!(prize_pool.get_protocol_fee_reserves_value<SUI>() == 50); // 5% of 1000
         assert!(prize_pool.get_treasury_reserves_value<SUI>() == 1000 - 250 - 50); // 1000 - fee - protocol fee
+
+        assert!(refund_coin.value() == 0);
+        refund_coin.burn_for_testing()
     };
 
     scenario.next_tx(USER2);
     {
         let coin = from_balance(create_balance_for_testing<SUI>(1000), scenario.ctx());
-        prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
+        let refund_coin = prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
 
         assert!(prize_pool.get_player_tickets(&phase_info, USER2) == 10);
         assert!(prize_pool.get_total_purchased_tickets(&phase_info) == 20);
@@ -417,6 +438,9 @@ fun test_fee_distributions() {
         assert!(prize_pool.get_lp_fee_reserves_value<SUI>() == 500); // 25% of 2000
         assert!(prize_pool.get_protocol_fee_reserves_value<SUI>() == 100); // 5% of 2000
         assert!(prize_pool.get_treasury_reserves_value<SUI>() == 2000 - 500 - 100); // 2000 - fee - protocol fee
+
+        assert!(refund_coin.value() == 0);
+        refund_coin.burn_for_testing()
     };
 
     test_scenario::return_shared(phase_info);
@@ -486,8 +510,11 @@ fun test_draw_on_no_liquidity() {
     scenario.next_tx(USER1);
     {
         let coin = from_balance(create_balance_for_testing<SUI>(1000000), scenario.ctx());
-        prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
+        let refund_coin = prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
         assert!(prize_pool.get_player_tickets(&phase_info, USER1) == 10000);
+
+        assert!(refund_coin.value() == 0);
+        refund_coin.burn_for_testing()
     };
 
     // iterate to Drawing
@@ -573,7 +600,7 @@ fun test_draw_on_no_liquidity() {
         assert!(lounge.get_prize_reserves_value<SUI>() == 0);
     };
 
-    // Check the fee distribution
+        // Check the fee distribution
     scenario.next_tx(AUTHORITY);
     {
         let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
@@ -724,12 +751,15 @@ fun test_player_win_scenario() {
     scenario.next_tx(USER1);
     {
         let coin = from_balance(create_balance_for_testing<SUI>(1000000), scenario.ctx());
-        prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
+        let refund_coin = prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
         assert!(prize_pool.get_player_tickets(&phase_info, USER1) == 10000);
 
         assert!(prize_pool.get_lp_fee_reserves_value<SUI>() == 250000);
         assert!(prize_pool.get_protocol_fee_reserves_value<SUI>() == 50000);
         assert!(prize_pool.get_treasury_reserves_value<SUI>() == 1000000 - 250000 - 50000);
+
+        assert!(refund_coin.value() == 0);
+        refund_coin.burn_for_testing()
     };
 
     // Forward phase to drawing
@@ -818,7 +848,7 @@ fun test_player_win_scenario() {
         test_utils::destroy(prize_coin);
     };
 
-    // Check the fee distribution
+        // Check the fee distribution
     scenario.next_tx(AUTHORITY);
     {
         let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
@@ -888,12 +918,15 @@ fun test_lp_win_scenario() {
     scenario.next_tx(USER1);
     {
         let coin = from_balance(create_balance_for_testing<SUI>(1000000), scenario.ctx());
-        prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
+        let refund_coin = prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
         assert!(prize_pool.get_player_tickets(&phase_info, USER1) == 10000);
 
         assert!(prize_pool.get_lp_fee_reserves_value<SUI>() == 250000);
         assert!(prize_pool.get_protocol_fee_reserves_value<SUI>() == 50000);
         assert!(prize_pool.get_treasury_reserves_value<SUI>() == 1000000 - 250000 - 50000);
+
+        assert!(refund_coin.value() == 0);
+        refund_coin.burn_for_testing()
     };
 
     // Forward phase to drawing
@@ -974,7 +1007,7 @@ fun test_lp_win_scenario() {
         assert!(lounge_registry.is_lounge_available(1) == false);
     };
 
-    // Check the fee distribution
+        // Check the fee distribution
     scenario.next_tx(AUTHORITY);
     {
         let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
