@@ -1,5 +1,6 @@
 module anglerfish::round;
 
+use sui::clock::Clock;
 use sui::table::{Self, Table};
 use sui::vec_set::{Self, VecSet};
 
@@ -12,6 +13,8 @@ public struct Round has store {
     winner: Option<address>,
     /// The prize amount for the round
     prize_amount: u64,
+    /// The timestamp of drawing the winner
+    drawing_timestamp_ms: u64,
 }
 
 public fun new(ctx: &mut TxContext): Round {
@@ -20,6 +23,7 @@ public fun new(ctx: &mut TxContext): Round {
         players: vec_set::empty(),
         winner: option::none(),
         prize_amount: 0,
+        drawing_timestamp_ms: 0,
     }
 }
 
@@ -33,12 +37,15 @@ public(package) fun add_player_ticket(self: &mut Round, player: address, amount:
     };
 }
 
-public(package) fun set_winner(self: &mut Round, winner: Option<address>) {
+public(package) fun record_drawing_result(
+    self: &mut Round,
+    clock: &Clock,
+    winner: Option<address>,
+    prize_amount: u64,
+) {
     self.winner = winner;
-}
-
-public(package) fun set_prize_amount(self: &mut Round, prize_amount: u64) {
     self.prize_amount = prize_amount;
+    self.drawing_timestamp_ms = clock.timestamp_ms();
 }
 
 public(package) fun find_ticket_winner_address(self: &Round, ticket_number: u64): Option<address> {
@@ -72,6 +79,10 @@ public fun get_winner(self: &Round): Option<address> {
 
 public fun get_prize_amount(self: &Round): u64 {
     self.prize_amount
+}
+
+public fun get_drawing_timestamp_ms(self: &Round): u64 {
+    self.drawing_timestamp_ms
 }
 
 public fun get_number_of_players(self: &Round): u64 {
