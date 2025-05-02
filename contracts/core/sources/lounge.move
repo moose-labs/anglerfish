@@ -4,9 +4,9 @@ use sui::bag::{Self, Bag};
 use sui::balance::{Self, Balance};
 use sui::coin::{Self, Coin, from_balance};
 
-const ErrorUnauthorized: u64 = 0;
-const ErrorRecipientCannotBeZero: u64 = 1;
-const ErrorNotAvailableLounge: u64 = 2;
+const ErrorUnauthorized: u64 = 1;
+const ErrorRecipientCannotBeZero: u64 = 2;
+const ErrorNotAvailableLounge: u64 = 3;
 
 public struct LoungeCap has key, store {
     id: UID,
@@ -24,8 +24,6 @@ public struct LoungeRegistry has key {
     id: UID,
     /// The table of lounges that contain the lounge id and the claimable address
     lounges: Bag,
-    /// Pool authorized creator
-    creator: ID,
 }
 
 fun init(ctx: &mut TxContext) {
@@ -35,12 +33,12 @@ fun init(ctx: &mut TxContext) {
         id: object::new(ctx),
     };
 
-    transfer::share_object(LoungeRegistry {
+    let lounge_registry = LoungeRegistry {
         id: object::new(ctx),
         lounges: bag::new(ctx),
-        creator: object::id(&authority_cap),
-    });
+    };
 
+    transfer::share_object(lounge_registry);
     transfer::public_transfer(authority_cap, authority);
 }
 
@@ -50,13 +48,12 @@ public fun init_for_testing(ctx: &mut TxContext) {
 }
 
 public fun create_lounge<T>(
-    self: &LoungeCap, // Enforce to use by lounge cap capability
+    _self: &LoungeCap, // Enforce to use by lounge cap capability
     lounge_registry: &mut LoungeRegistry,
     lounge_number: u64,
     recipient: address,
     ctx: &mut TxContext,
 ): u64 {
-    assert!(object::id(self) == lounge_registry.creator, ErrorUnauthorized);
     assert!(recipient != @0x0, ErrorRecipientCannotBeZero);
 
     let lounge = Lounge<T> {

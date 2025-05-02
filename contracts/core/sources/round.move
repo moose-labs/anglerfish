@@ -3,15 +3,14 @@ module anglerfish::round;
 use sui::clock::Clock;
 use sui::table::{Self, Table};
 
-const ErrorUnauthorized: u64 = 1;
-const ErrorZeroTicketCount: u64 = 2;
-const ErrorPlayerNotFound: u64 = 3;
+const ErrorZeroTicketCount: u64 = 1;
+const ErrorPlayerNotFound: u64 = 2;
+const ErrorInvalidRoundNumber: u64 = 3;
 
 /// Shared object storing historical Round IDs.
 public struct RoundRegistry has key {
     id: UID,
     rounds: Table<u64, ID>,
-    creator: ID
 }
 
 /// Capability for authorized RoundRegistry operations.
@@ -53,16 +52,10 @@ fun init(ctx: &mut TxContext) {
     let round_registry = RoundRegistry {
         id: object::new(ctx),
         rounds: table::new(ctx),
-        creator: object::id(&round_cap),
     };
 
     transfer::share_object(round_registry);
     transfer::transfer(round_cap, authority);
-}
-
-/// Adds a Round ID for a given round number.
-public fun add_round(_cap: &RoundRegistryCap, round_registry: &mut RoundRegistry, round_number: u64, round_id: ID) {
-    round_registry.rounds.add(round_number, round_id);
 }
 
 /// Retrieves the Round ID for a given round number, if it exists.
@@ -79,24 +72,18 @@ public fun contains(round_registry: &RoundRegistry, round_number: u64): bool {
     round_registry.rounds.contains(round_number)
 }
 
-public fun create_round(
-    round_cap: &RoundRegistryCap,
+public(package) fun create_round(
     round_registry: &mut RoundRegistry,
     round_number: u64,
     ctx: &mut TxContext,
 ): ID {
-    assert!(object::id(round_cap) == round_registry.creator, ErrorUnauthorized);
-
-    let round = new(round_number, ctx);
-    let round_id = object::id(&round);
-
-    round_cap.add_round(round_registry, round_number, round_id);
+    let round_id = new(round_number, ctx);
+    round_registry.rounds.add(round_number, round_id);
     round_id
 }
 
-
 /// Creates a new shared Round object for the given round number.
-public fun new(round_number: u64, ctx: &mut TxContext): Round {
+public(package) fun new(round_number: u64, ctx: &mut TxContext): ID {
     let round = Round {
         id: object::new(ctx),
         round_number,
@@ -108,8 +95,9 @@ public fun new(round_number: u64, ctx: &mut TxContext): Round {
         drawing_timestamp_ms: 0,
     };
 
+    let round_id = object::id(&round);
     transfer::share_object(round);
-    round
+    round_id
 }
 
 /// Adds a player's ticket purchase, updating total_tickets and players table.
@@ -218,6 +206,16 @@ public fun get_player_tickets(self: &Round, player: address): u64 {
     };
 
     total_tickets
+}
+
+// Asserts
+//
+
+public fun assert_valid_round_id(round_registry: &RoundRegistry, round_number: u64, round_id: ID) {
+    let opt_round_id = round_registry.get_round_id(round_number);
+
+    assert!(opt_round_id.is_some(), ErrorInvalidRoundNumber);
+    assert!(opt_round_id.borrow() == round_id, ErrorInvalidRoundNumber);
 }
 
 #[test_only]

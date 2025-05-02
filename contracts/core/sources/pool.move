@@ -28,8 +28,6 @@ public struct PoolRegistry has key {
     pool_ids: VecMap<u64, address>,
     /// Mapping from pool id to pool object
     pools: Bag,
-    /// Pool authorized creator
-    creator: ID,
 }
 
 public struct Pool<phantom T> has key, store {
@@ -57,13 +55,13 @@ fun init(ctx: &mut TxContext) {
         id: object::new(ctx),
     };
 
-    transfer::share_object(PoolRegistry {
+    let pool_registry = PoolRegistry {
         id: object::new(ctx),
         pool_ids: vec_map::empty(),
         pools: bag::new(ctx),
-        creator: object::id(&pool_cap),
-    });
+    };
 
+    transfer::share_object(pool_registry);
     transfer::transfer(pool_cap, authority);
 }
 
@@ -251,7 +249,7 @@ public(package) fun withdraw_prize<T>(
     risk_ratio_bps: u64,
     phase_info: &PhaseInfo,
     ctx: &mut TxContext,
-) : Coin<T> {
+): Coin<T> {
     phase_info.assert_distributing_phase();
 
     let pool = get_pool_by_risk_ratio_mut<T>(pool_registry, risk_ratio_bps);
@@ -313,8 +311,6 @@ public fun shares_to_coins<T>(self: &Pool<T>, shares: u64): u64 {
     mul_div(shares, reserve, self.total_shares)
 }
 
-
-
 /// Inner functions
 ///
 
@@ -330,7 +326,11 @@ fun inner_take_reserves_balance<T>(self: &mut Pool<T>, amount: u64, ctx: &mut Tx
     coin
 }
 
-public fun inner_update_shares_for_redemption<T>(self: &mut Pool<T>, redeemer: address, share_amount: u64) {
+public fun inner_update_shares_for_redemption<T>(
+    self: &mut Pool<T>,
+    redeemer: address,
+    share_amount: u64,
+) {
     // Update user shares
     let user_shares = self.user_shares.borrow_mut(redeemer);
     *user_shares = *user_shares - share_amount;
@@ -339,7 +339,11 @@ public fun inner_update_shares_for_redemption<T>(self: &mut Pool<T>, redeemer: a
     self.total_shares = self.total_shares - share_amount;
 }
 
-public fun inner_update_shares_for_deposit<T>(self: &mut Pool<T>, depositor: address, share_amount: u64) {
+public fun inner_update_shares_for_deposit<T>(
+    self: &mut Pool<T>,
+    depositor: address,
+    share_amount: u64,
+) {
     // Update user shares
     if (table::contains<address, u64>(&self.user_shares, depositor)) {
         let deposited = table::borrow_mut<address, u64>(&mut self.user_shares, depositor);

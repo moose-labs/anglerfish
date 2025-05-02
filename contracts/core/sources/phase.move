@@ -12,6 +12,7 @@ const ErrorNotSettlingPhase: u64 = 7;
 const ErrorCurrentPhaseNotCompleted: u64 = 8;
 const ErrorCurrentPhaseIsNotAllowedIterateFromEntry: u64 = 9;
 const ErrorDurationTooShort: u64 = 10;
+const ErrorInvalidRound: u64 = 11;
 
 /// Represents the current phase of the lottery system.
 public enum Phase has copy, drop, store {
@@ -65,9 +66,9 @@ fun init(ctx: &mut TxContext) {
         id: object::new(ctx),
     };
 
-    transfer::share_object(PhaseInfo {
+    let phase_info = PhaseInfo {
         id: object::new(ctx),
-        current_round: 0,
+        current_round_number: 0,
         current_phase: Phase::Uninitialized,
         current_phase_at: 0,
         durations: PhaseDurations {
@@ -75,8 +76,9 @@ fun init(ctx: &mut TxContext) {
             ticketing_duration: 0,
         },
         last_drawing_timestamp_ms: 0,
-    });
+    };
 
+    transfer::share_object(phase_info);
     transfer::transfer(phase_info_cap, authority);
 }
 
@@ -142,8 +144,8 @@ public fun get_current_phase(self: &PhaseInfo): Phase {
 }
 
 /// Gets the current epoch or round in a sequential process
-public fun get_current_round(self: &PhaseInfo): u64 {
-    self.current_round
+public fun get_current_round_number(self: &PhaseInfo): u64 {
+    self.current_round_number
 }
 
 /// Gets the timestamp of the current phase in seconds.
@@ -196,7 +198,7 @@ public fun estimate_current_phase_completed_at(self: &PhaseInfo): u64 {
 
 fun inner_bump_round(_self: &PhaseInfoCap, phase_info: &mut PhaseInfo) {
     if (phase_info.current_phase == Phase::LiquidityProviding) {
-        phase_info.current_round = phase_info.current_round + 1;
+        phase_info.current_round_number = phase_info.current_round_number + 1;
     }
 }
 
@@ -243,6 +245,10 @@ public fun assert_distributing_phase(self: &PhaseInfo) {
 
 public fun assert_settling_phase(self: &PhaseInfo) {
     assert!(self.current_phase == Phase::Settling, ErrorNotSettlingPhase);
+}
+
+public fun assert_current_round_number(self: &PhaseInfo, round_number: u64) {
+    assert!(self.current_round_number == round_number, ErrorInvalidRound);
 }
 
 #[test_only]
