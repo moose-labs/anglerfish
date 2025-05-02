@@ -13,6 +13,7 @@ const ErrorCurrentPhaseNotCompleted: u64 = 8;
 const ErrorCurrentPhaseIsNotAllowedIterateFromEntry: u64 = 9;
 const ErrorDurationTooShort: u64 = 10;
 
+/// Represents the current phase of the lottery system.
 public enum Phase has copy, drop, store {
     /// The system is not yet initialized.
     Uninitialized,
@@ -28,6 +29,7 @@ public enum Phase has copy, drop, store {
     Settling,
 }
 
+/// Stores durations for timed phases.
 public struct PhaseDurations has copy, drop, store {
     /// The duration of the liquidity providing phase in seconds
     liquidity_providing_duration: u64,
@@ -35,22 +37,27 @@ public struct PhaseDurations has copy, drop, store {
     ticketing_duration: u64,
 }
 
+/// Capability for phase transitions.
 public struct PhaseInfoCap has key, store {
     id: UID,
 }
 
+/// Shared object tracking the lottery’s phase state, including UI metadata.
 public struct PhaseInfo has key {
     id: UID,
     /// Represents the current epoch or round in a sequential process
-    current_round: u64,
+    current_round_number: u64,
     /// Indicates whether the liquidity pool is processing deposits, ticket sales, or drawing
     current_phase: Phase,
     /// The timestamp of the current phase in seconds
     current_phase_at: u64,
     /// The durations of each phase in seconds
     durations: PhaseDurations,
+    /// Timestamp of the last Drawing phase
+    last_drawing_timestamp_ms: u64,
 }
 
+/// Initializes PhaseInfo and PhaseInfoCap.
 fun init(ctx: &mut TxContext) {
     let authority = ctx.sender();
 
@@ -67,11 +74,13 @@ fun init(ctx: &mut TxContext) {
             liquidity_providing_duration: 0,
             ticketing_duration: 0,
         },
+        last_drawing_timestamp_ms: 0,
     });
 
     transfer::transfer(phase_info_cap, authority);
 }
 
+/// Initializes PhaseInfo with durations and sets Settling phase.
 public fun initialize(
     _self: &PhaseInfoCap, // Enforce to use by phase info cap capability
     phase_info: &mut PhaseInfo,
@@ -93,7 +102,7 @@ public fun initialize(
     phase_info.current_phase = Phase::Settling;
 }
 
-/// On LiquidityProviding and Ticketing phases are allowed to call by public entry
+/// Advances phase from LiquidityProviding or Ticketing (entry point).
 public fun next_entry(
     self: &PhaseInfoCap, // Enforce to use by phase info cap capability
     phase_info: &mut PhaseInfo,
@@ -104,6 +113,7 @@ public fun next_entry(
     self.next(phase_info, clock, ctx);
 }
 
+/// Advances to the next phase, updating UI metadata.
 public(package) fun next(
     self: &PhaseInfoCap, // Enforce to use by phase info cap capability
     phase_info: &mut PhaseInfo,
@@ -126,16 +136,24 @@ public fun is_initialized(self: &PhaseInfo): bool {
     self.current_phase != Phase::Uninitialized
 }
 
+// Gets to current phase of the platform
 public fun get_current_phase(self: &PhaseInfo): Phase {
     self.current_phase
 }
 
+/// Gets the current epoch or round in a sequential process
 public fun get_current_round(self: &PhaseInfo): u64 {
     self.current_round
 }
 
+/// Gets the timestamp of the current phase in seconds.
 public fun get_current_phase_at(self: &PhaseInfo): u64 {
     self.current_phase_at
+}
+
+/// Gets the timestamp of the last Drawing phase.
+public fun get_last_drawing_timestamp_ms(self: &PhaseInfo): u64 {
+    self.last_drawing_timestamp_ms
 }
 
 public fun is_current_phase_completed(self: &PhaseInfo, clock: &Clock): bool {

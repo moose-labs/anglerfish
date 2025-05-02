@@ -2,13 +2,29 @@ module anglerfish::round;
 
 use sui::clock::Clock;
 use sui::table::{Self, Table};
-use sui::vec_set::{Self, VecSet};
 
-public struct Round has store {
-    /// The table of players that contain the address and their purchased tickets
-    player_tickets: Table<address, u64>,
-    /// The list of unique players
-    players: VecSet<address>,
+const ErrorZeroTicketCount: u64 = 1;
+const ErrorPlayerNotFound: u64 = 2;
+
+/// Represents a single ticket purchase by a player.
+public struct Purchase has copy, drop, store {
+    address: address,
+    ticket_count: u64,
+    start_index: u64,
+}
+
+/// Shared object representing a lottery round, tracking tickets, players, and results.
+public struct Round has key {
+    /// Object id
+    id: UID,
+    /// Round number
+    round_number: u64,
+    /// Total ticket sold
+    total_tickets: u64,
+    /// The list of ticket purchases
+    purchases: vector<Purchase>,
+    /// Records of players and collection of purchases
+    players: Table<address, vector<u64>>,
     /// Winner address
     winner: Option<address>,
     /// The prize amount for the round
@@ -17,26 +33,68 @@ public struct Round has store {
     drawing_timestamp_ms: u64,
 }
 
-public fun new(ctx: &mut TxContext): Round {
-    Round {
-        player_tickets: table::new(ctx),
-        players: vec_set::empty(),
+/// Creates a new shared Round object for the given round number.
+public fun new(round_number: u64, ctx: &mut TxContext): Round {
+    let round = Round {
+        id: object::new(ctx),
+        round_number,
+        total_tickets: 0,
+        purchases: vector::empty(),
+        players: table::new(ctx),
         winner: option::none(),
         prize_amount: 0,
         drawing_timestamp_ms: 0,
-    }
-}
-
-public(package) fun add_player_ticket(self: &mut Round, player: address, amount: u64) {
-    if (self.players.contains(&player)) {
-        let current_participant = self.player_tickets.borrow_mut(player);
-        *current_participant = *current_participant + amount;
-    } else {
-        self.players.insert(player);
-        self.player_tickets.add(player, amount);
     };
+
+    transfer::share_object(round);
+    round
 }
 
+/// Adds a player's ticket purchase, updating total_tickets and players table.
+public(package) fun add_player_ticket(self: &mut Round, player: address, ticket_count: u64) {
+    assert!(ticket_count > 0, ErrorZeroTicketCount);
+
+    let start_index = self.total_tickets;
+    self.total_tickets = self.total_tickets + ticket_count;
+    let purchase = Purchase {
+        address: player,
+        ticket_count,
+        start_index,
+    };
+
+    let purchase_index = self.purchases.length();
+    vector::push_back(&mut self.purchases, purchase);
+    if (!self.players.contains(player)) {
+        self.players.add(player, vector::empty());
+    };
+    let player_purchases = self.players.borrow_mut(player);
+    player_purchases.push_back(purchase_index);
+}
+
+/// Finds the winner's address for a given ticket number using binary search.
+public(package) fun find_ticket_winner_address(self: &Round, ticket_number: u64): Option<address> {
+    let mut left = 0;
+    let mut right = self.purchases.length();
+
+    // binary search
+    while (left < right) {
+        let mid = (left + right) / 2;
+        let purchase = &self.purchases[mid];
+        let start = purchase.start_index;
+        let end = start + purchase.ticket_count;
+
+        if (ticket_number < start) {
+            right = mid;
+        } else if (ticket_number >= end) {
+            left = mid + 1;
+        } else {
+            return option::some(purchase.address)
+        };
+    };
+    option::none()
+}
+
+/// Records the drawing result, including winner, prize amount, and timestamp.
 public(package) fun record_drawing_result(
     self: &mut Round,
     clock: &Clock,
@@ -48,64 +106,52 @@ public(package) fun record_drawing_result(
     self.drawing_timestamp_ms = clock.timestamp_ms();
 }
 
-public(package) fun find_ticket_winner_address(self: &Round, ticket_number: u64): Option<address> {
-    let mut i = 0;
-    let mut cumulative_tickets = 0;
-    let mut winner = option::none();
-
-    let players = self.players.into_keys();
-    let total_players = self.players.size();
-    while (i < total_players) {
-        let player = players[i];
-        let ticket_count = *self.player_tickets.borrow(player);
-        cumulative_tickets = cumulative_tickets + ticket_count;
-        if (ticket_number < cumulative_tickets) {
-            winner = option::some(player);
-            break
-        };
-        i = i + 1;
-    };
-
-    winner
-}
-
+/// Checks if a player participated in the round.
 public fun contains(self: &Round, player: &address): bool {
-    self.players.contains(player)
+    self.players.contains(*player)
 }
 
+/// Gets the round number.
+public fun get_round_number(self: &Round): u64 {
+    self.round_number
+}
+
+/// Gets the total tickets sold.
+public fun total_tickets(self: &Round): u64 {
+    self.total_tickets
+}
+
+/// Gets the winner's address, if any.
 public fun get_winner(self: &Round): Option<address> {
     self.winner
 }
 
+/// Gets the prize amount for the round.
 public fun get_prize_amount(self: &Round): u64 {
     self.prize_amount
 }
 
+/// Gets the timestamp of the drawing.
 public fun get_drawing_timestamp_ms(self: &Round): u64 {
     self.drawing_timestamp_ms
 }
 
+/// Gets the number of unique players.
 public fun get_number_of_players(self: &Round): u64 {
-    self.players.size()
+    self.players.length()
 }
 
+/// Gets the total tickets purchased by a player for UI display.
 public fun get_player_tickets(self: &Round, player: address): u64 {
-    if (self.player_tickets.contains(player)) {
-        *self.player_tickets.borrow(player)
-    } else {
-        0
-    }
-}
+    assert!(self.players.contains(player), ErrorPlayerNotFound);
 
-public fun get_total_purchased_tickets(self: &Round): u64 {
-    let players = self.players.into_keys();
-    let total_players = self.players.size();
-
-    let mut i = 0;
+    let player_purchases = self.players.borrow(player);
     let mut total_tickets = 0;
-    while (i < total_players) {
-        let player = players[i];
-        total_tickets = total_tickets + *self.player_tickets.borrow(player);
+    let mut i = 0;
+
+    while (i < player_purchases.length()) {
+        let purchase = self.purchases[i];
+        total_tickets = total_tickets + purchase.ticket_count;
         i = i + 1;
     };
 
