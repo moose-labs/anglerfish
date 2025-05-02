@@ -249,7 +249,9 @@ entry fun draw<T>(
     let winner_player = round.find_ticket_winner_address(ticket_number);
 
     // Store the winner in the current round
-    round.record_drawing_result(clock, winner_player, prize_reserves_value);
+    let draw_timestamp = clock.timestamp_ms();
+    round.record_drawing_result(draw_timestamp, winner_player, prize_reserves_value);
+    phase_info_cap.set_last_drawing_timestamp_ms(phase_info,draw_timestamp);
 
     // Instantly move to the Distributing phase
     phase_info_cap.next(phase_info, clock, ctx);

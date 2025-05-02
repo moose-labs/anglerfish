@@ -2,7 +2,6 @@
 module anglerfish::round;
 
 use anglerfish::errors;
-use sui::clock::Clock;
 use sui::event::emit;
 use sui::table::{Self, Table};
 
@@ -169,13 +168,13 @@ public(package) fun find_ticket_winner_address(self: &Round, ticket_number: u64)
 /// Records the drawing result, including winner, prize amount, and timestamp.
 public(package) fun record_drawing_result(
     self: &mut Round,
-    clock: &Clock,
+    draw_timestamp: u64,
     winner: Option<address>,
     prize_amount: u64,
 ) {
     self.winner = winner;
     self.prize_amount = prize_amount;
-    self.drawing_timestamp_ms = clock.timestamp_ms();
+    self.drawing_timestamp_ms = draw_timestamp;
 }
 
 /// Checks if a player participated in the round.

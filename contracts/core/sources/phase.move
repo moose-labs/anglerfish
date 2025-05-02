@@ -132,11 +132,16 @@ public(package) fun next(
     phase_info.current_phase = phase_info.next_phase();
     phase_info.current_phase_at = clock.timestamp_ms();
 
-    if (phase_info.current_phase == Phase::Drawing) {
-        phase_info.last_drawing_timestamp_ms = clock.timestamp_ms();
-    };
-
     self.bump_round(phase_info);
+}
+
+public(package) fun set_last_drawing_timestamp_ms(
+    _self: &PhaseInfoCap,
+    phase_info: &mut PhaseInfo,
+    draw_timestamp: u64,
+) {
+    phase_info.assert_drawing_phase();
+    phase_info.last_drawing_timestamp_ms = draw_timestamp;
 }
 
 /// Public views
