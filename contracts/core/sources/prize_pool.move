@@ -3,23 +3,36 @@ module anglerfish::prize_pool;
 use anglerfish::lounge::{LoungeCap, LoungeRegistry};
 use anglerfish::phase::{PhaseInfo, PhaseInfoCap};
 use anglerfish::pool::{PoolRegistry, PoolCap};
-use anglerfish::round::{Round, RoundRegistry};
+use anglerfish::round::{Round, RoundRegistry, RoundRegistryCap};
 use anglerfish::ticket_calculator::calculate_total_ticket_with_fees;
 use sui::bag::{Self, Bag};
 use sui::balance::{Self, Balance};
 use sui::clock::Clock;
 use sui::coin::{Self, Coin, from_balance};
+use sui::event::emit;
 use sui::random::{Random, new_generator};
+use sui::types::is_one_time_witness;
 
-const ErrorPurchaseAmountTooLow: u64 = 1;
-const ErrorLpFeeAmountTooHigh: u64 = 2;
-const ErrorProtocolFeeAmountTooHigh: u64 = 3;
-const ErrorExcessiveFeeCharged: u64 = 4;
-const ErrorInvalidRoundNumberSequence: u64 = 5;
+const ErrorNotOneTimeWitness: u64 = 1;
+const ErrorPurchaseAmountTooLow: u64 = 2;
+const ErrorLpFeeAmountTooHigh: u64 = 3;
+const ErrorProtocolFeeAmountTooHigh: u64 = 4;
+const ErrorExcessiveFeeCharged: u64 = 5;
+const ErrorInvalidRoundNumberSequence: u64 = 6;
 
 const TREASURY_RESERVES_KEY: vector<u8> = b"treasury_reserves";
 const LP_FEE_RESERVES_KEY: vector<u8> = b"lp_fee_reserves";
 const PROTOCOL_FEE_RESERVES_KEY: vector<u8> = b"protocol_fee_reserves";
+
+// Events
+//
+
+public struct PrizePoolCapCreated has copy, drop {
+    cap_id: ID,
+}
+
+// Structs
+//
 
 /// Capability for authorized PrizePool operations.
 public struct PrizePoolCap has key, store {
@@ -40,7 +53,14 @@ public struct PrizePool has key {
     reserves: Bag,
 }
 
-fun init(ctx: &mut TxContext) {
+public struct PRIZE_POOL has drop {}
+
+// Functions
+//
+
+fun init(witness: PRIZE_POOL, ctx: &mut TxContext) {
+    assert!(is_one_time_witness(&witness), ErrorNotOneTimeWitness);
+
     let authority = ctx.sender();
 
     let authority_cap = PrizePoolCap {
@@ -54,6 +74,8 @@ fun init(ctx: &mut TxContext) {
         protocol_fee_bps: 500,
         reserves: bag::new(ctx),
     };
+
+    emit(PrizePoolCapCreated { cap_id: object::id(&authority_cap) });
 
     transfer::share_object(prize_pool);
     transfer::transfer(authority_cap, authority);
@@ -90,9 +112,10 @@ public fun set_protocol_fee_bps(
     prize_pool.protocol_fee_bps = protocol_fee_bps;
 }
 
-/// Creates a Round for the current round in LiquidityProviding phase.
+/// Starts a Round for the current round in LiquidityProviding phase.
 public fun start_new_round(
     _self: &PrizePoolCap,
+    round_registry_cap: &RoundRegistryCap,
     phase_info_cap: &PhaseInfoCap,
     phase_info: &mut PhaseInfo,
     round_registry: &mut RoundRegistry,
@@ -110,10 +133,10 @@ public fun start_new_round(
     let current_round_number = phase_info.get_current_round_number();
 
     // Expecting round number increment by 1
-    assert!(current_round_number == prev_round_number+1, ErrorInvalidRoundNumberSequence);
+    assert!(current_round_number == prev_round_number + 1, ErrorInvalidRoundNumberSequence);
 
     // Create a new round in RoundRegistry
-    round_registry.create_round(current_round_number, ctx);
+    round_registry_cap.create_round(round_registry, current_round_number, ctx);
 }
 
 public fun claim_protocol_fee<T>(
@@ -416,5 +439,6 @@ fun inner_cal_lp_ticket(self: &PrizePool, prize_reserves_value: u64): u64 {
 
 #[test_only]
 public fun init_for_testing(ctx: &mut TxContext) {
-    init(ctx);
+    let witness = PRIZE_POOL {};
+    init(witness, ctx);
 }

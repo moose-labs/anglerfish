@@ -1,12 +1,28 @@
+/// Manages prize reserves for winners in a LoungeRegistry.
 module anglerfish::lounge;
 
 use sui::bag::{Self, Bag};
 use sui::balance::{Self, Balance};
 use sui::coin::{Self, Coin, from_balance};
+use sui::event::emit;
+use sui::types::is_one_time_witness;
 
-const ErrorUnauthorized: u64 = 1;
-const ErrorRecipientCannotBeZero: u64 = 2;
-const ErrorNotAvailableLounge: u64 = 3;
+const ErrorNotOneTimeWitness: u64 = 1;
+const ErrorUnauthorized: u64 = 2;
+const ErrorRecipientCannotBeZero: u64 = 3;
+const ErrorNotAvailableLounge: u64 = 4;
+const ErrorNonEmptyReserves: u64 = 5;
+const ErrorEmptyReserves: u64 = 6;
+
+// Events
+//
+
+public struct LoungeCapCreated has copy, drop {
+    cap_id: ID,
+}
+
+// Structs
+//
 
 public struct LoungeCap has key, store {
     id: UID,
@@ -26,7 +42,15 @@ public struct LoungeRegistry has key {
     lounges: Bag,
 }
 
-fun init(ctx: &mut TxContext) {
+/// LOUNGE a OneTimeWitness struct
+public struct LOUNGE has drop {}
+
+// Functions
+//
+
+fun init(witness: LOUNGE, ctx: &mut TxContext) {
+    assert!(is_one_time_witness(&witness), ErrorNotOneTimeWitness);
+
     let authority = ctx.sender();
 
     let authority_cap = LoungeCap {
@@ -38,15 +62,13 @@ fun init(ctx: &mut TxContext) {
         lounges: bag::new(ctx),
     };
 
+    emit(LoungeCapCreated { cap_id: object::id(&authority_cap) });
+
     transfer::share_object(lounge_registry);
     transfer::public_transfer(authority_cap, authority);
 }
 
-#[test_only]
-public fun init_for_testing(ctx: &mut TxContext) {
-    init(ctx);
-}
-
+/// Creates a Lounge for a winner to claim prizes.
 public fun create_lounge<T>(
     _self: &LoungeCap, // Enforce to use by lounge cap capability
     lounge_registry: &mut LoungeRegistry,
@@ -67,24 +89,43 @@ public fun create_lounge<T>(
     lounge_number
 }
 
-public fun is_lounge_available(lounge_registry: &LoungeRegistry, lounge_number: u64): bool {
-    lounge_registry.lounges.contains(lounge_number)
+/// Deletes a completed Lounge
+public fun delete_lounge<T>(_self: &LoungeCap, self: &mut LoungeRegistry, lounge_number: u64) {
+    assert!(self.is_lounge_available(lounge_number), ErrorNotAvailableLounge);
+
+    // Remove lounge from bag
+    let lounge: Lounge<T> = self.lounges.remove(lounge_number);
+    let Lounge { id, reserves, recipient: _ } = lounge;
+
+    // Lounge reserves must be zero
+    assert!(reserves.value() == 0, ErrorNonEmptyReserves);
+
+    // Delete objects
+    balance::destroy_zero(reserves);
+    object::delete(id);
 }
 
+/// Winner claims rewards
 public fun claim<T>(self: &mut LoungeRegistry, lounge_number: u64, ctx: &mut TxContext): Coin<T> {
     assert!(self.is_lounge_available(lounge_number), ErrorNotAvailableLounge);
 
-    let lounge = self.inner_get_lounge_number_mut(lounge_number);
+    let lounge = self.get_lounge_mut(lounge_number);
 
     assert!(lounge.recipient == ctx.sender(), ErrorUnauthorized);
+    assert!(lounge.reserves.value() > 0, ErrorEmptyReserves);
+
     from_balance(lounge.reserves.withdraw_all(), ctx)
 }
 
-public fun add_reserves<T>(self: &mut LoungeRegistry, lounge_number: u64, coin: Coin<T>) {
+public(package) fun add_reserves<T>(self: &mut LoungeRegistry, lounge_number: u64, coin: Coin<T>) {
     assert!(self.is_lounge_available(lounge_number), ErrorNotAvailableLounge);
 
-    let lounge = self.inner_get_lounge_number_mut(lounge_number);
+    let lounge = self.get_lounge_mut(lounge_number);
     coin::put(&mut lounge.reserves, coin);
+}
+
+public fun is_lounge_available(lounge_registry: &LoungeRegistry, lounge_number: u64): bool {
+    lounge_registry.lounges.contains(lounge_number)
 }
 
 public fun get_lounge_number<T>(self: &mut LoungeRegistry, lounge_number: u64): &Lounge<T> {
@@ -102,8 +143,15 @@ public fun get_prize_reserves_value<T>(lounge: &Lounge<T>): u64 {
 
 // === Private functions ===
 
-fun inner_get_lounge_number_mut<T>(self: &mut LoungeRegistry, lounge_number: u64): &mut Lounge<T> {
-    assert!(self.is_lounge_available(lounge_number), ErrorNotAvailableLounge);
-    let lounge = self.lounges.borrow_mut(lounge_number);
-    lounge
+fun get_lounge_mut<T>(self: &mut LoungeRegistry, lounge_number: u64): &mut Lounge<T> {
+    self.lounges.borrow_mut(lounge_number)
+}
+
+// For testing
+//
+
+#[test_only]
+public fun init_for_testing(ctx: &mut TxContext) {
+    let witness = LOUNGE {};
+    init(witness, ctx);
 }

@@ -1,18 +1,32 @@
+/// Manages lottery phase lifecycle and round tracking.
 module anglerfish::phase;
 
 use sui::clock::Clock;
+use sui::event::emit;
+use sui::types::is_one_time_witness;
 
-const ErrorUninitialized: u64 = 1;
-const ErrorAlreadyInitialized: u64 = 2;
-const ErrorNotLiquidityPhase: u64 = 3;
-const ErrorNotTicketingPhase: u64 = 4;
-const ErrorNotDrawingPhase: u64 = 5;
-const ErrorNotDistributingPhase: u64 = 6;
-const ErrorNotSettlingPhase: u64 = 7;
-const ErrorCurrentPhaseNotCompleted: u64 = 8;
-const ErrorCurrentPhaseIsNotAllowedIterateFromEntry: u64 = 9;
-const ErrorDurationTooShort: u64 = 10;
-const ErrorInvalidRound: u64 = 11;
+const ErrorNotOneTimeWitness: u64 = 1;
+const ErrorUninitialized: u64 = 2;
+const ErrorAlreadyInitialized: u64 = 3;
+const ErrorNotLiquidityPhase: u64 = 4;
+const ErrorNotTicketingPhase: u64 = 5;
+const ErrorNotDrawingPhase: u64 = 6;
+const ErrorNotDistributingPhase: u64 = 7;
+const ErrorNotSettlingPhase: u64 = 8;
+const ErrorCurrentPhaseNotCompleted: u64 = 9;
+const ErrorCurrentPhaseIsNotAllowedIterateFromEntry: u64 = 10;
+const ErrorDurationTooShort: u64 = 11;
+const ErrorInvalidRound: u64 = 12;
+
+// Events
+//
+
+public struct PhaseInfoCapCreated has copy, drop {
+    cap_id: ID,
+}
+
+// Structs
+//
 
 /// Represents the current phase of the lottery system.
 public enum Phase has copy, drop, store {
@@ -58,8 +72,16 @@ public struct PhaseInfo has key {
     last_drawing_timestamp_ms: u64,
 }
 
+/// PHASE a OneTimeWitness struct
+public struct PHASE has drop {}
+
+// Functions
+//
+
 /// Initializes PhaseInfo and PhaseInfoCap.
-fun init(ctx: &mut TxContext) {
+fun init(witness: PHASE, ctx: &mut TxContext) {
+    assert!(is_one_time_witness(&witness), ErrorNotOneTimeWitness);
+
     let authority = ctx.sender();
 
     let phase_info_cap = PhaseInfoCap {
@@ -77,6 +99,8 @@ fun init(ctx: &mut TxContext) {
         },
         last_drawing_timestamp_ms: 0,
     };
+
+    emit(PhaseInfoCapCreated { cap_id: object::id(&phase_info_cap) });
 
     transfer::share_object(phase_info);
     transfer::transfer(phase_info_cap, authority);
@@ -102,6 +126,7 @@ public fun initialize(
 
     // Set the initial phase to Settling
     phase_info.current_phase = Phase::Settling;
+    phase_info.current_round_number = 0;
 }
 
 /// Advances phase from LiquidityProviding or Ticketing (entry point).
@@ -115,7 +140,7 @@ public fun next_entry(
     self.next(phase_info, clock, ctx);
 }
 
-/// Advances to the next phase, updating UI metadata.
+/// Advances to the next phase, updating timestamps and round numbers.
 public(package) fun next(
     self: &PhaseInfoCap, // Enforce to use by phase info cap capability
     phase_info: &mut PhaseInfo,
@@ -128,6 +153,10 @@ public(package) fun next(
 
     phase_info.current_phase = phase_info.inner_next_phase();
     phase_info.current_phase_at = clock.timestamp_ms();
+
+    if (phase_info.current_phase == Phase::Drawing) {
+        phase_info.last_drawing_timestamp_ms = clock.timestamp_ms();
+    };
 
     self.inner_bump_round(phase_info);
 }
@@ -253,5 +282,6 @@ public fun assert_current_round_number(self: &PhaseInfo, round_number: u64) {
 
 #[test_only]
 public fun init_for_testing(ctx: &mut TxContext) {
-    init(ctx);
+    let witness = PHASE {};
+    init(witness, ctx);
 }

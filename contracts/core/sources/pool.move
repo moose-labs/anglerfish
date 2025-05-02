@@ -1,3 +1,4 @@
+/// Manages liquidity pools with varying risk ratios for lottery reserves.
 module anglerfish::pool;
 
 use anglerfish::phase::PhaseInfo;
@@ -5,18 +6,32 @@ use math::u64::mul_div;
 use sui::bag::{Self, Bag};
 use sui::balance::Balance;
 use sui::coin::{Self, Coin, from_balance};
+use sui::event::emit;
 use sui::table::{Self, Table};
+use sui::types::is_one_time_witness;
 use sui::vec_map::{Self, VecMap};
 
-const ErrorTooSmallToMint: u64 = 1;
-const ErrorTooLargeToRedeem: u64 = 2;
-const ErrorInsufficientShares: u64 = 3;
-const ErrorInsufficientReserves: u64 = 4;
-const ErrorPoolRiskRatioTooHigh: u64 = 5;
-const ErrorPoolDepositDisabled: u64 = 6;
-const ErrorPoolAlreadyCreated: u64 = 7;
+const ErrorNotOneTimeWitness: u64 = 1;
+const ErrorTooSmallToMint: u64 = 2;
+const ErrorTooLargeToRedeem: u64 = 3;
+const ErrorInsufficientShares: u64 = 4;
+const ErrorInsufficientReserves: u64 = 5;
+const ErrorPoolRiskRatioTooHigh: u64 = 6;
+const ErrorPoolDepositDisabled: u64 = 7;
+const ErrorPoolAlreadyCreated: u64 = 8;
+const ErrorRedeemTooSmall: u64 = 9;
 
 const MAX_RISK_RATIO_BPS: u64 = 10000;
+
+// Events
+//
+
+public struct PoolCapCreated has copy, drop {
+    cap_id: ID,
+}
+
+// structs
+//
 
 public struct PoolCap has key, store {
     id: UID,
@@ -48,7 +63,15 @@ public struct Pool<phantom T> has key, store {
     is_deposit_enabled: bool,
 }
 
-fun init(ctx: &mut TxContext) {
+/// POOL a OneTimeWitness struct
+public struct POOL has drop {}
+
+// Functions
+//
+
+fun init(witness: POOL, ctx: &mut TxContext) {
+    assert!(is_one_time_witness(&witness), ErrorNotOneTimeWitness);
+
     let authority = ctx.sender();
 
     let pool_cap = PoolCap {
@@ -61,15 +84,13 @@ fun init(ctx: &mut TxContext) {
         pools: bag::new(ctx),
     };
 
+    emit(PoolCapCreated { cap_id: object::id(&pool_cap) });
+
     transfer::share_object(pool_registry);
     transfer::transfer(pool_cap, authority);
 }
 
-#[test_only]
-public fun init_for_testing(ctx: &mut TxContext) {
-    init(ctx);
-}
-
+/// Creates a new pool with the specified risk ratio.
 public fun create_pool<T>(
     _self: &PoolCap, // Enforce to use by pool cap capability
     pool_registry: &mut PoolRegistry,
@@ -109,9 +130,10 @@ public fun get_total_reserves_value<T>(self: &PoolRegistry): u64 {
     let mut i = 0;
     let mut total_reserves_value = 0;
     while (i < len) {
-        let risk_ratio_bps = pool_risk_ratios[i];
+        let risk_ratio_bps = *pool_risk_ratios.borrow(i);
         let pool = self.get_pool_by_risk_ratio<T>(risk_ratio_bps);
         total_reserves_value = total_reserves_value + pool.get_reserves().value();
+
         i = i + 1;
     };
 
@@ -124,7 +146,7 @@ public fun get_total_prize_reserves_value<T>(self: &PoolRegistry): u64 {
     let mut i = 0;
     let mut total_prize_reserves_value = 0;
     while (i < len) {
-        let risk_ratio_bps = pool_risk_ratios[i];
+        let risk_ratio_bps = *pool_risk_ratios.borrow(i);
         let pool = self.get_pool_by_risk_ratio<T>(risk_ratio_bps);
         total_prize_reserves_value = total_prize_reserves_value + pool.get_prize_reserves_value();
         i = i + 1;
@@ -222,6 +244,7 @@ public fun redeem<T>(
 
     // Calculate redemption value before updating reserve value
     let redeem_value = pool.shares_to_coins(redeem_shares_amount);
+    assert!(redeem_value > 0, ErrorRedeemTooSmall);
 
     // update pool reserves
     pool.inner_update_shares_for_redemption(redeemer, redeem_shares_amount);
@@ -255,6 +278,8 @@ public(package) fun withdraw_prize<T>(
     let pool = get_pool_by_risk_ratio_mut<T>(pool_registry, risk_ratio_bps);
 
     let prize_reserves_amount = pool.get_prize_reserves_value();
+    assert!(prize_reserves_amount > 0, ErrorInsufficientReserves);
+
     let prize_coin = pool.inner_take_reserves_balance(prize_reserves_amount, ctx);
 
     prize_coin
@@ -371,4 +396,10 @@ public fun get_pool_by_risk_ratio_mut_for_testing<T>(
     risk_ratio_bps: u64,
 ): &mut Pool<T> {
     get_pool_by_risk_ratio_mut(self, risk_ratio_bps)
+}
+
+#[test_only]
+public fun init_for_testing(ctx: &mut TxContext) {
+    let witness = POOL {};
+    init(witness, ctx);
 }

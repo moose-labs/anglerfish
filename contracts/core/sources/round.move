@@ -1,11 +1,26 @@
 module anglerfish::round;
 
 use sui::clock::Clock;
+use sui::event::emit;
 use sui::table::{Self, Table};
+use sui::types::is_one_time_witness;
 
-const ErrorZeroTicketCount: u64 = 1;
-const ErrorPlayerNotFound: u64 = 2;
-const ErrorInvalidRoundNumber: u64 = 3;
+const ErrorNotOneTimeWitness: u64 = 1;
+const ErrorZeroTicketCount: u64 = 2;
+const ErrorPlayerNotFound: u64 = 3;
+const ErrorInvalidRoundNumber: u64 = 4;
+const ErrorPlayErCannotBeZero: u64 = 5;
+const ErrorInvalidRoundId: u64 = 6;
+
+// Events
+//
+
+public struct RoundRegistryCapCreated has copy, drop {
+    cap_id: ID,
+}
+
+// Structs
+//
 
 /// Shared object storing historical Round IDs.
 public struct RoundRegistry has key {
@@ -43,8 +58,16 @@ public struct Round has key {
     drawing_timestamp_ms: u64,
 }
 
+/// ROUND a OneTimeWitness struct
+public struct ROUND has drop {}
+
+// Functions
+//
+
 /// Initialize shared RoundRegistry and its capability
-fun init(ctx: &mut TxContext) {
+fun init(witness: ROUND, ctx: &mut TxContext) {
+    assert!(is_one_time_witness(&witness), ErrorNotOneTimeWitness);
+
     let authority = ctx.sender();
 
     let round_cap = RoundRegistryCap { id: object::new(ctx) };
@@ -53,6 +76,8 @@ fun init(ctx: &mut TxContext) {
         id: object::new(ctx),
         rounds: table::new(ctx),
     };
+
+    emit(RoundRegistryCapCreated { cap_id: object::id(&round_cap) });
 
     transfer::share_object(round_registry);
     transfer::transfer(round_cap, authority);
@@ -73,6 +98,7 @@ public fun contains(round_registry: &RoundRegistry, round_number: u64): bool {
 }
 
 public(package) fun create_round(
+    _self: &RoundRegistryCap,
     round_registry: &mut RoundRegistry,
     round_number: u64,
     ctx: &mut TxContext,
@@ -100,9 +126,22 @@ public(package) fun new(round_number: u64, ctx: &mut TxContext): ID {
     round_id
 }
 
+public fun delete_round(
+    _self: &RoundRegistryCap,
+    round_registry: &mut RoundRegistry,
+    round: &mut Round,
+) {
+    let round_id = round_registry.rounds.remove(round.get_round_number());
+
+    assert!(round_id == object::id(round), ErrorInvalidRoundId);
+
+    // TODO: Cannot delete shared Round; mark as inactive if needed
+}
+
 /// Adds a player's ticket purchase, updating total_tickets and players table.
 public(package) fun add_player_ticket(self: &mut Round, player: address, ticket_count: u64) {
     assert!(ticket_count > 0, ErrorZeroTicketCount);
+    assert!(player != @0x0, ErrorPlayErCannotBeZero);
 
     let start_index = self.total_tickets;
     self.total_tickets = self.total_tickets + ticket_count;
@@ -200,8 +239,10 @@ public fun get_player_tickets(self: &Round, player: address): u64 {
     let mut i = 0;
 
     while (i < player_purchases.length()) {
-        let purchase = self.purchases[i];
+        let purchase_index = *player_purchases.borrow(i);
+        let purchase = self.purchases[purchase_index];
         total_tickets = total_tickets + purchase.ticket_count;
+
         i = i + 1;
     };
 
@@ -220,5 +261,6 @@ public fun assert_valid_round_id(round_registry: &RoundRegistry, round_number: u
 
 #[test_only]
 public fun init_for_testing(ctx: &mut TxContext) {
-    init(ctx);
+    let witness = ROUND {};
+    init(witness, ctx);
 }
