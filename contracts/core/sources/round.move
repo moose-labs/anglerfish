@@ -3,8 +3,19 @@ module anglerfish::round;
 use sui::clock::Clock;
 use sui::table::{Self, Table};
 
-const ErrorZeroTicketCount: u64 = 1;
-const ErrorPlayerNotFound: u64 = 2;
+const ErrorUnauthorized: u64 = 1;
+const ErrorZeroTicketCount: u64 = 2;
+const ErrorPlayerNotFound: u64 = 3;
+
+/// Shared object storing historical Round IDs.
+public struct RoundRegistry has key {
+    id: UID,
+    rounds: Table<u64, ID>,
+    creator: ID
+}
+
+/// Capability for authorized RoundRegistry operations.
+public struct RoundRegistryCap has key { id: UID }
 
 /// Represents a single ticket purchase by a player.
 public struct Purchase has copy, drop, store {
@@ -32,6 +43,57 @@ public struct Round has key {
     /// The timestamp of drawing the winner
     drawing_timestamp_ms: u64,
 }
+
+/// Initialize shared RoundRegistry and its capability
+fun init(ctx: &mut TxContext) {
+    let authority = ctx.sender();
+
+    let round_cap = RoundRegistryCap { id: object::new(ctx) };
+
+    let round_registry = RoundRegistry {
+        id: object::new(ctx),
+        rounds: table::new(ctx),
+        creator: object::id(&round_cap),
+    };
+
+    transfer::share_object(round_registry);
+    transfer::transfer(round_cap, authority);
+}
+
+/// Adds a Round ID for a given round number.
+public fun add_round(_cap: &RoundRegistryCap, round_registry: &mut RoundRegistry, round_number: u64, round_id: ID) {
+    round_registry.rounds.add(round_number, round_id);
+}
+
+/// Retrieves the Round ID for a given round number, if it exists.
+public fun get_round_id(round_registry: &RoundRegistry, round_number: u64): Option<ID> {
+    if (round_registry.rounds.contains(round_number)) {
+        option::some(*round_registry.rounds.borrow(round_number))
+    } else {
+        option::none()
+    }
+}
+
+/// Checks if a round number exists in the round_registry.
+public fun contains(round_registry: &RoundRegistry, round_number: u64): bool {
+    round_registry.rounds.contains(round_number)
+}
+
+public fun create_round(
+    round_cap: &RoundRegistryCap,
+    round_registry: &mut RoundRegistry,
+    round_number: u64,
+    ctx: &mut TxContext,
+): ID {
+    assert!(object::id(round_cap) == round_registry.creator, ErrorUnauthorized);
+
+    let round = new(round_number, ctx);
+    let round_id = object::id(&round);
+
+    round_cap.add_round(round_registry, round_number, round_id);
+    round_id
+}
+
 
 /// Creates a new shared Round object for the given round number.
 public fun new(round_number: u64, ctx: &mut TxContext): Round {
@@ -107,7 +169,7 @@ public(package) fun record_drawing_result(
 }
 
 /// Checks if a player participated in the round.
-public fun contains(self: &Round, player: &address): bool {
+public fun has_player(self: &Round, player: &address): bool {
     self.players.contains(*player)
 }
 
@@ -156,4 +218,9 @@ public fun get_player_tickets(self: &Round, player: address): u64 {
     };
 
     total_tickets
+}
+
+#[test_only]
+public fun init_for_testing(ctx: &mut TxContext) {
+    init(ctx);
 }

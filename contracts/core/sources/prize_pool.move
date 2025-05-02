@@ -3,14 +3,14 @@ module anglerfish::prize_pool;
 use anglerfish::lounge::{LoungeCap, LoungeRegistry};
 use anglerfish::phase::{PhaseInfo, PhaseInfoCap};
 use anglerfish::pool::{PoolRegistry, PoolCap};
-use anglerfish::round::{Self, Round};
+use anglerfish::round::{Self, Round, RoundRegistry};
 use anglerfish::ticket_calculator::calculate_total_ticket_with_fees;
 use sui::bag::{Self, Bag};
 use sui::balance::{Self, Balance};
 use sui::clock::Clock;
 use sui::coin::{Self, Coin, from_balance};
 use sui::random::{Random, new_generator};
-use anglerfish::archive_round::ArchiveRound;
+
 
 // const ErrorMaximumNumberOfPlayersReached: u64 = 1;
 const ErrorInvalidPoolRegistry: u64 = 2;
@@ -20,6 +20,7 @@ const ErrorLpFeeAmountTooHigh: u64 = 5;
 const ErrorProtocolFeeAmountTooHigh: u64 = 6;
 const ErrorExcessiveFeeCharged: u64 = 7;
 const ErrorInvalidRound: u64 = 8;
+const ErrorInvalidRoundRegistry: u64 = 9;
 
 const TREASURY_RESERVES_KEY: vector<u8> = b"treasury_reserves";
 const LP_FEE_RESERVES_KEY: vector<u8> = b"lp_fee_reserves";
@@ -37,8 +38,8 @@ public struct PrizePool has key {
     pool_registry: Option<ID>,
     /// The lounge factory that can create lounges
     lounge_registry: Option<ID>,
-    /// Object id of the current round
-    current_round: Option<ID>,
+    /// The round registry that can create lounges
+    round_registry: Option<ID>,
     /// The maximum number of players that can participate in the prize pool each round
     price_per_ticket: u64,
     /// The prize provider fees in basis points
@@ -60,7 +61,7 @@ fun init(ctx: &mut TxContext) {
         id: object::new(ctx),
         pool_registry: option::none(),
         lounge_registry: option::none(),
-        current_round: option::none(),
+        round_registry: option::none(),
         price_per_ticket: 0,
         lp_fee_bps: 2500,
         protocol_fee_bps: 500,
@@ -90,30 +91,14 @@ public fun set_lounge_registry(
     prize_pool.lounge_registry = option::some(lounge_registry_id);
 }
 
-/// Initializes a Round for the current round in LiquidityProviding phase.
-public  fun initialize_round(
+public fun set_round_registry(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
-    phase_info: &PhaseInfo,
-    archive_round: &ArchiveRound,
-    ctx: &mut TxContext,
+    round_registry_id: ID,
+    _ctx: &mut TxContext,
 ) {
-    phase_info.assert_liquidity_providing_phase();
-    assert!(prize_pool.archive_round.is_some(), ErrorInvalidArchiveRound);
-    assert!(object::id(archive_round) == *option::borrow(&prize_pool.archive_round), ErrorInvalidArchiveRound);
-    let round_number = phase_info.get_current_round();
-    if (!archive_round.contains(round_number)) {
-        let round = round::new(round_number, ctx);
-        let round_id = object::id(&round);
-        add_round(&ctx.sender_as_cap<ArchiveRoundCap>(), archive_round, round_number, round_id);
-        transfer::share_object(round);
-        event::emit(RoundCreated {
-            round_id,
-            round_number,
-            archive_round_id: object::id(archive_round),
-        });
-    };
-    }
+    prize_pool.round_registry = option::some(round_registry_id);
+}
 
 public fun set_price_per_ticket(
     _self: &PrizePoolCap,
@@ -142,6 +127,32 @@ public fun set_protocol_fee_bps(
 ) {
     assert!(protocol_fee_bps < 3000, ErrorProtocolFeeAmountTooHigh);
     prize_pool.protocol_fee_bps = protocol_fee_bps;
+}
+
+/// Initializes a Round for the current round in LiquidityProviding phase.
+public  fun initialize_round(
+    _self: &PrizePoolCap,
+    prize_pool: &mut PrizePool,
+    phase_info: &PhaseInfo,
+    round_registry: &RoundRegistry,
+    ctx: &mut TxContext,
+) {
+    phase_info.assert_liquidity_providing_phase();
+    assert!(prize_pool.round_registry.is_some(), ErrorInvalidRoundRegistry);
+    assert!(object::id(round_registry) == *option::borrow(&prize_pool.round_registry), ErrorInvalidRoundRegistry);
+
+    let round_number = phase_info.get_current_round();
+    if (!round_registry.contains(round_number)) {
+        let round = round::new(round_number, ctx);
+        let round_id = object::id(&round);
+        add_round(&ctx.sender_as_cap<RoundRegistryCap>(), archive_round, round_number, round_id);
+        transfer::share_object(round);
+        event::emit(RoundCreated {
+            round_id,
+            round_number,
+            archive_round_id: object::id(archive_round),
+        });
+    };
 }
 
 public fun claim_protocol_fee<T>(
@@ -344,9 +355,6 @@ public fun distribute<T>(
     let fee_reserves = prize_pool.inner_get_lp_fee_reserves_balance_mut<T>();
     inner_distribute_fee_to_pools<T>(pool_registry, fee_reserves, ctx);
 
-    // We create round table for the next round
-    prize_pool.inner_ensure_round_table_exists(current_round + 1, ctx);
-
     // Instantly move to the Settling phase
     phase_info_cap.next(phase_info, clock, ctx);
 }
@@ -371,14 +379,15 @@ fun inner_aggregate_prize_to_lounge<T>(
     let mut i = 0;
     while (i < risk_ratios_len) {
         let risk_ratio_bps = risk_ratios[i];
-        pool_cap.withdraw_prize<T>(
+        let prize_coin = pool_cap.withdraw_prize<T>(
             pool_registry,
             risk_ratio_bps,
             phase_info,
-            lounge_registry,
-            lounge_number,
             ctx,
         );
+
+        lounge_registry.add_reserves(lounge_number, prize_coin);
+
         i = i + 1;
     };
 }

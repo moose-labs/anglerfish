@@ -5,6 +5,7 @@ use anglerfish::lounge::init_for_testing as init_lounge_for_testing;
 use anglerfish::phase::init_for_testing as init_phase_info_for_testing;
 use anglerfish::pool::init_for_testing as init_pool_for_testing;
 use anglerfish::prize_pool::init_for_testing as init_prize_for_testing;
+use anglerfish::round::init_for_testing as init_round_for_testing;
 use sui::clock::{create_for_testing as create_clock_for_testing, Clock};
 use sui::random::create_for_testing as create_random_for_testing;
 use sui::test_scenario::{Self, Scenario};
@@ -26,6 +27,7 @@ public fun build_base_test_suite(authority: address): (Scenario, Clock) {
         init_pool_for_testing(scenario.ctx());
         init_lounge_for_testing(scenario.ctx());
         init_prize_for_testing(scenario.ctx());
+        init_round_for_testing(scenario.ctx());
     };
 
     (scenario, clock)

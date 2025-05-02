@@ -1,6 +1,5 @@
 module anglerfish::pool;
 
-use anglerfish::lounge::LoungeRegistry;
 use anglerfish::phase::PhaseInfo;
 use math::u64::mul_div;
 use sui::bag::{Self, Bag};
@@ -251,10 +250,8 @@ public(package) fun withdraw_prize<T>(
     pool_registry: &mut PoolRegistry,
     risk_ratio_bps: u64,
     phase_info: &PhaseInfo,
-    lounge_registry: &mut LoungeRegistry,
-    lounge_number: u64,
     ctx: &mut TxContext,
-) {
+) : Coin<T> {
     phase_info.assert_distributing_phase();
 
     let pool = get_pool_by_risk_ratio_mut<T>(pool_registry, risk_ratio_bps);
@@ -262,7 +259,7 @@ public(package) fun withdraw_prize<T>(
     let prize_reserves_amount = pool.get_prize_reserves_value();
     let prize_coin = pool.inner_take_reserves_balance(prize_reserves_amount, ctx);
 
-    lounge_registry.add_reserves(lounge_number, prize_coin);
+    prize_coin
 }
 
 public fun get_deposit_enabled<T>(self: &Pool<T>): bool {
