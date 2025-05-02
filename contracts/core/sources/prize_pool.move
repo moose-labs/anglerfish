@@ -1,5 +1,7 @@
+/// Manages lottery ticket purchases, prize draws, and distributions.
 module anglerfish::prize_pool;
 
+use anglerfish::errors;
 use anglerfish::lounge::{LoungeCap, LoungeRegistry};
 use anglerfish::phase::{PhaseInfo, PhaseInfoCap};
 use anglerfish::pool::{PoolRegistry, PoolCap};
@@ -11,32 +13,21 @@ use sui::clock::Clock;
 use sui::coin::{Self, Coin, from_balance};
 use sui::event::emit;
 use sui::random::{Random, new_generator};
-use sui::types::is_one_time_witness;
-
-const ErrorNotOneTimeWitness: u64 = 1;
-const ErrorPurchaseAmountTooLow: u64 = 2;
-const ErrorLpFeeAmountTooHigh: u64 = 3;
-const ErrorProtocolFeeAmountTooHigh: u64 = 4;
-const ErrorExcessiveFeeCharged: u64 = 5;
-const ErrorInvalidRoundNumberSequence: u64 = 6;
 
 const TREASURY_RESERVES_KEY: vector<u8> = b"treasury_reserves";
 const LP_FEE_RESERVES_KEY: vector<u8> = b"lp_fee_reserves";
 const PROTOCOL_FEE_RESERVES_KEY: vector<u8> = b"protocol_fee_reserves";
 
-// Events
-//
-
-public struct PrizePoolCapCreated has copy, drop {
-    cap_id: ID,
-}
-
-// Structs
-//
+/// PRIZE_POOL a OneTimeWitness struct
+public struct PRIZE_POOL has drop {}
 
 /// Capability for authorized PrizePool operations.
 public struct PrizePoolCap has key, store {
     id: UID,
+}
+
+public struct PrizePoolCapCreated has copy, drop {
+    cap_id: ID,
 }
 
 /// Shared object storing lottery configuration and state.
@@ -53,13 +44,9 @@ public struct PrizePool has key {
     reserves: Bag,
 }
 
-public struct PRIZE_POOL has drop {}
-
-// Functions
-//
-
+/// Initializes PrizePool and PrizePoolCap with OneTimeWitness.
 fun init(witness: PRIZE_POOL, ctx: &mut TxContext) {
-    assert!(is_one_time_witness(&witness), ErrorNotOneTimeWitness);
+    assert!(sui::types::is_one_time_witness(&witness), errors::e_not_one_time_witness());
 
     let authority = ctx.sender();
 
@@ -81,38 +68,32 @@ fun init(witness: PRIZE_POOL, ctx: &mut TxContext) {
     transfer::transfer(authority_cap, authority);
 }
 
-/// Capability to manage the prize pool
-
+/// Sets the price per ticket.
 public fun set_price_per_ticket(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
     price_per_ticket: u64,
-    _ctx: &mut TxContext,
 ) {
     prize_pool.price_per_ticket = price_per_ticket;
 }
 
-public fun set_lp_fee_bps(
-    _self: &PrizePoolCap,
-    prize_pool: &mut PrizePool,
-    lp_fee_bps: u64,
-    _ctx: &mut TxContext,
-) {
-    assert!(lp_fee_bps < 6000, ErrorLpFeeAmountTooHigh);
+/// Sets the liquidity provider fee in basis points.
+public fun set_lp_fee_bps(_self: &PrizePoolCap, prize_pool: &mut PrizePool, lp_fee_bps: u64) {
+    assert!(lp_fee_bps < 6000, errors::e_lp_fee_amount_too_high());
     prize_pool.lp_fee_bps = lp_fee_bps;
 }
 
+/// Sets the protocol fee in basis points.
 public fun set_protocol_fee_bps(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
     protocol_fee_bps: u64,
-    _ctx: &mut TxContext,
 ) {
-    assert!(protocol_fee_bps < 3000, ErrorProtocolFeeAmountTooHigh);
+    assert!(protocol_fee_bps < 3000, errors::e_protocol_fee_amount_too_high());
     prize_pool.protocol_fee_bps = protocol_fee_bps;
 }
 
-/// Starts a Round for the current round in LiquidityProviding phase.
+/// Starts a new round in Settling phase, advancing to LiquidityProviding.
 public fun start_new_round(
     _self: &PrizePoolCap,
     round_registry_cap: &RoundRegistryCap,
@@ -132,13 +113,17 @@ public fun start_new_round(
 
     let current_round_number = phase_info.get_current_round_number();
 
-    // Expecting round number increment by 1
-    assert!(current_round_number == prev_round_number + 1, ErrorInvalidRoundNumberSequence);
+    // Capability for authorized PrizePool operations.
+    assert!(
+        current_round_number == prev_round_number + 1,
+        errors::e_invalid_round_number_sequence(),
+    );
 
     // Create a new round in RoundRegistry
     round_registry_cap.create_round(round_registry, current_round_number, ctx);
 }
 
+/// Claims all protocol fee reserves.
 public fun claim_protocol_fee<T>(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
@@ -149,6 +134,7 @@ public fun claim_protocol_fee<T>(
     fee_coin
 }
 
+/// Claims all treasury reserves.
 public fun claim_treasury_reserve<T>(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
@@ -172,24 +158,28 @@ public fun get_protocol_fee_bps(self: &PrizePool): u64 {
 }
 
 /// Public views & functions
-///
 
+/// Gets the total prize reserves value from the pool registry.
 public fun get_total_prize_reserves_value<T>(_self: &PrizePool, pool_registry: &PoolRegistry): u64 {
     pool_registry.get_total_prize_reserves_value<T>()
 }
 
+/// Gets the value of treasury reserves.
 public fun get_treasury_reserves_value<T>(self: &PrizePool): u64 {
     self.inner_get_treasury_reserves_balance_value<T>()
 }
 
+/// Gets the value of liquidity provider fee reserves.
 public fun get_lp_fee_reserves_value<T>(self: &PrizePool): u64 {
     self.inner_get_lp_fee_reserves_balance_value<T>()
 }
 
+/// Gets the value of protocol fee reserves.
 public fun get_protocol_fee_reserves_value<T>(self: &PrizePool): u64 {
     self.inner_get_protocol_fee_reserves_balance_value<T>()
 }
 
+/// Purchases tickets, allocating fees and adding tickets to the round.
 public fun purchase_ticket<T>(
     self: &mut PrizePool,
     round: &mut Round,
@@ -201,12 +191,12 @@ public fun purchase_ticket<T>(
     phase_info.assert_current_round_number(round.get_round_number());
 
     let purchase_value = purchase_coin.value();
-    assert!(purchase_value > 0, ErrorPurchaseAmountTooLow);
+    assert!(purchase_value > 0, errors::e_purchase_amount_too_low());
 
     let ticket_amount = purchase_value / self.price_per_ticket;
-    assert!(ticket_amount > 0, ErrorPurchaseAmountTooLow);
+    assert!(ticket_amount > 0, errors::e_purchase_amount_too_low());
 
-    // Calculate exact cost for tickets
+    // Calculate exact ticket cost
     let ticket_cost = ticket_amount * self.price_per_ticket;
 
     let mut purchase_coin = purchase_coin;
@@ -222,20 +212,21 @@ public fun purchase_ticket<T>(
     coin::put(protocol_fee_reserves, purchase_coin.split(protocol_fee_amount, ctx));
 
     // Transfer ticket coin to treasury reserves
-    assert!(ticket_cost > lp_fee_amount + protocol_fee_amount, ErrorExcessiveFeeCharged);
+    assert!(ticket_cost > lp_fee_amount + protocol_fee_amount, errors::e_excessive_fee_charged());
     let ticket_cost_after_fees = ticket_cost - lp_fee_amount - protocol_fee_amount;
     let treasury_reserves = self.inner_get_treasury_reserves_balance_mut<T>();
     coin::put(treasury_reserves, purchase_coin.split(ticket_cost_after_fees, ctx));
 
-    // Check if the buyer already exists in the current round
+    // Record player tickets
     let buyer = tx_context::sender(ctx);
     round.add_player_ticket(buyer, ticket_amount);
 
     purchase_coin // Refund excess amount
 }
 
+/// Draws a winner using a random ticket number.
 entry fun draw<T>(
-    _self: &PrizePoolCap, // Enforcing the use of the PrizePoolCap
+    _self: &PrizePoolCap,
     phase_info_cap: &PhaseInfoCap,
     prize_pool: &PrizePool,
     phase_info: &mut PhaseInfo,
@@ -264,6 +255,7 @@ entry fun draw<T>(
     phase_info_cap.next(phase_info, clock, ctx);
 }
 
+/// Distributes prizes to a lounge and fees to pools.
 public fun distribute<T>(
     _self: &PrizePoolCap,
     pool_cap: &PoolCap,
@@ -280,7 +272,8 @@ public fun distribute<T>(
     phase_info.assert_distributing_phase();
     phase_info.assert_current_round_number(round.get_round_number());
 
-    if (round.get_winner().is_some()) {
+    let prize_reserves_value = prize_pool.get_total_prize_reserves_value<T>(pool_registry);
+    if (round.get_winner().is_some() && prize_reserves_value > 0) {
         let winner = round.get_winner().extract();
         let lounge_number = lounge_cap.create_lounge<T>(
             lounge_registry,
@@ -305,8 +298,7 @@ public fun distribute<T>(
     phase_info_cap.next(phase_info, clock, ctx);
 }
 
-/// Internal
-///
+/// Internal functions
 
 fun inner_aggregate_prize_to_lounge<T>(
     _self: &PrizePool,

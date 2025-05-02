@@ -1,26 +1,13 @@
+/// Manages lottery rounds, ticket purchases, and winner selection.
 module anglerfish::round;
 
+use anglerfish::errors;
 use sui::clock::Clock;
 use sui::event::emit;
 use sui::table::{Self, Table};
-use sui::types::is_one_time_witness;
 
-const ErrorNotOneTimeWitness: u64 = 1;
-const ErrorZeroTicketCount: u64 = 2;
-const ErrorPlayerNotFound: u64 = 3;
-const ErrorInvalidRoundNumber: u64 = 4;
-const ErrorPlayErCannotBeZero: u64 = 5;
-const ErrorInvalidRoundId: u64 = 6;
-
-// Events
-//
-
-public struct RoundRegistryCapCreated has copy, drop {
-    cap_id: ID,
-}
-
-// Structs
-//
+/// ROUND a OneTimeWitness struct
+public struct ROUND has drop {}
 
 /// Shared object storing historical Round IDs.
 public struct RoundRegistry has key {
@@ -31,6 +18,8 @@ public struct RoundRegistry has key {
 /// Capability for authorized RoundRegistry operations.
 public struct RoundRegistryCap has key { id: UID }
 
+public struct RoundRegistryCapCreated has copy, drop { cap_id: ID }
+
 /// Represents a single ticket purchase by a player.
 public struct Purchase has copy, drop, store {
     address: address,
@@ -38,7 +27,6 @@ public struct Purchase has copy, drop, store {
     start_index: u64,
 }
 
-/// Shared object representing a lottery round, tracking tickets, players, and results.
 public struct Round has key {
     /// Object id
     id: UID,
@@ -58,15 +46,9 @@ public struct Round has key {
     drawing_timestamp_ms: u64,
 }
 
-/// ROUND a OneTimeWitness struct
-public struct ROUND has drop {}
-
-// Functions
-//
-
-/// Initialize shared RoundRegistry and its capability
+/// Initializes RoundRegistry and RoundRegistryCap with OneTimeWitness.
 fun init(witness: ROUND, ctx: &mut TxContext) {
-    assert!(is_one_time_witness(&witness), ErrorNotOneTimeWitness);
+    assert!(sui::types::is_one_time_witness(&witness), errors::e_not_one_time_witness());
 
     let authority = ctx.sender();
 
@@ -97,6 +79,7 @@ public fun contains(round_registry: &RoundRegistry, round_number: u64): bool {
     round_registry.rounds.contains(round_number)
 }
 
+/// Creates a new shared Round and registers it in RoundRegistry.
 public(package) fun create_round(
     _self: &RoundRegistryCap,
     round_registry: &mut RoundRegistry,
@@ -133,15 +116,15 @@ public fun delete_round(
 ) {
     let round_id = round_registry.rounds.remove(round.get_round_number());
 
-    assert!(round_id == object::id(round), ErrorInvalidRoundId);
+    assert!(round_id == object::id(round), errors::e_invalid_round());
 
     // TODO: Cannot delete shared Round; mark as inactive if needed
 }
 
 /// Adds a player's ticket purchase, updating total_tickets and players table.
 public(package) fun add_player_ticket(self: &mut Round, player: address, ticket_count: u64) {
-    assert!(ticket_count > 0, ErrorZeroTicketCount);
-    assert!(player != @0x0, ErrorPlayErCannotBeZero);
+    assert!(ticket_count > 0, errors::e_zero_ticket_count());
+    assert!(player != @0x0, errors::e_player_zero());
 
     let start_index = self.total_tickets;
     self.total_tickets = self.total_tickets + ticket_count;
@@ -232,8 +215,7 @@ public fun get_number_of_players(self: &Round): u64 {
 
 /// Gets the total tickets purchased by a player for UI display.
 public fun get_player_tickets(self: &Round, player: address): u64 {
-    assert!(self.players.contains(player), ErrorPlayerNotFound);
-
+    assert!(self.players.contains(player), errors::e_player_not_found());
     let player_purchases = self.players.borrow(player);
     let mut total_tickets = 0;
     let mut i = 0;
@@ -249,14 +231,11 @@ public fun get_player_tickets(self: &Round, player: address): u64 {
     total_tickets
 }
 
-// Asserts
-//
-
+/// Asserts that the round ID matches the round number in the registry.
 public fun assert_valid_round_id(round_registry: &RoundRegistry, round_number: u64, round_id: ID) {
     let opt_round_id = round_registry.get_round_id(round_number);
-
-    assert!(opt_round_id.is_some(), ErrorInvalidRoundNumber);
-    assert!(opt_round_id.borrow() == round_id, ErrorInvalidRoundNumber);
+    assert!(opt_round_id.is_some(), errors::e_invalid_round_number());
+    assert!(opt_round_id.borrow() == round_id, errors::e_invalid_round_number());
 }
 
 #[test_only]
