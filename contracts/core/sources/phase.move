@@ -17,7 +17,6 @@ const ErrorCurrentPhaseNotAllowedIterateFromEntry: u64 = 10;
 const ErrorDurationTooShort: u64 = 11;
 const ErrorInvalidRound: u64 = 12;
 
-
 /// PHASE a OneTimeWitness struct
 public struct PHASE has drop {}
 
@@ -125,10 +124,7 @@ public fun next_entry(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    assert!(
-        phase_info.is_allowed_next_from_entry(),
-        ErrorCurrentPhaseNotAllowedIterateFromEntry,
-    );
+    assert!(phase_info.is_allowed_next_from_entry(), ErrorCurrentPhaseNotAllowedIterateFromEntry);
     self.next(phase_info, clock, ctx);
 }
 

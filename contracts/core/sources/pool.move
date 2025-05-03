@@ -90,10 +90,7 @@ public fun create_pool<T>(
     ctx: &mut TxContext,
 ) {
     assert!(risk_ratio_bps <= MAX_RISK_RATIO_BPS, ErrorPoolRiskRatioTooHigh);
-    assert!(
-        pool_registry.pool_ids.contains(&risk_ratio_bps) == false,
-        ErrorPoolAlreadyCreated,
-    );
+    assert!(pool_registry.pool_ids.contains(&risk_ratio_bps) == false, ErrorPoolAlreadyCreated);
     phase_info.assert_settling_phase();
 
     let pool_id = object::new(ctx);

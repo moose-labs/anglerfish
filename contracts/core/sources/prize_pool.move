@@ -120,10 +120,7 @@ public fun start_new_round(
     let current_round_number = phase_info.get_current_round_number();
 
     // Capability for authorized PrizePool operations.
-    assert!(
-        current_round_number == prev_round_number + 1,
-        ErrorInvalidRoundNumberSequence,
-    );
+    assert!(current_round_number == prev_round_number + 1, ErrorInvalidRoundNumberSequence);
 
     // Create a new round in RoundRegistry
     round_registry_cap.create_round(round_registry, current_round_number, ctx);
@@ -200,7 +197,7 @@ public fun purchase_ticket<T>(
     assert!(purchase_value > 0, ErrorPurchaseAmountTooLow);
 
     let ticket_amount = purchase_value / self.price_per_ticket;
-    assert!(ticket_amount > 0,  ErrorPurchaseAmountTooLow);
+    assert!(ticket_amount > 0, ErrorPurchaseAmountTooLow);
 
     // Calculate exact ticket cost
     let ticket_cost = ticket_amount * self.price_per_ticket;
@@ -256,7 +253,7 @@ entry fun draw<T>(
 
     // Store the winner in the current round
     round.record_drawing_result(clock, winner_player, prize_reserves_value);
-    phase_info_cap.set_last_drawing_timestamp_ms(phase_info,clock);
+    phase_info_cap.set_last_drawing_timestamp_ms(phase_info, clock);
 
     // Instantly move to the Distributing phase
     phase_info_cap.next(phase_info, clock, ctx);

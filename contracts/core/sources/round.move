@@ -1,9 +1,9 @@
 /// Manages lottery rounds, ticket purchases, and winner selection.
 module anglerfish::round;
 
+use sui::clock::Clock;
 use sui::event::emit;
 use sui::table::{Self, Table};
-use sui::clock::Clock;
 
 const ENotOneTimeWitness: u64 = 3001;
 const ErrorZeroTicketCount: u64 = 3002;
