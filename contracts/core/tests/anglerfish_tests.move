@@ -8,15 +8,12 @@ module anglerfish::anglerfish_tests {
     use anglerfish::prize_pool::{Self, PrizePool, PrizePoolCap};
     use anglerfish::round::{Self, Round, RoundRegistry, RoundRegistryCap};
     use anglerfish::ticket_calculator;
-    use sui::balance;
     use sui::clock;
-    use sui::coin::{Self, Coin};
-    use sui::random::{Self, Random};
+    use sui::coin::{Self};
+    use sui::random::{Random};
     use sui::test_scenario::{Self as ts, Scenario};
     use sui::test_utils::assert_eq;
-    use sui::transfer;
     use sui::random::create_for_testing as create_random_for_testing;
-    use sui::coin::burn_for_testing;
 
     // Test coin type
     public struct TEST_COIN has drop {}
@@ -286,6 +283,8 @@ module anglerfish::anglerfish_tests {
         ts::next_tx(&mut scenario, ADMIN);
         let mut round_registry = ts::take_shared<RoundRegistry>(&scenario);
         let round_id = round::create_round(&round_registry_cap, &mut round_registry, 1, ts::ctx(&mut scenario));
+
+        ts::next_tx(&mut scenario, ADMIN);
         let mut round = ts::take_shared_by_id<Round>(&scenario, round_id);
 
         round::add_player_ticket(&mut round, USER1, 10);
@@ -295,8 +294,9 @@ module anglerfish::anglerfish_tests {
         assert_eq(round::get_player_tickets(&round, USER2), 20);
 
         let clock = clock::create_for_testing(ts::ctx(&mut scenario));
-        let mut winner = round::find_ticket_winner_address(&round, 15);
-        assert!(winner.is_some() && winner.extract() == USER2, 0);
+        let winner = round::find_ticket_winner_address(&round, 15);
+        assert!(winner.is_some() && *option::borrow(&winner) == USER2, 0);
+
         round::record_drawing_result(&mut round, &clock, winner, 1000);
 
         assert_eq(round::get_prize_amount(&round), 1000);
@@ -314,7 +314,7 @@ module anglerfish::anglerfish_tests {
     }
 
     #[test]
-    #[expected_failure(abort_code = anglerfish::errors::EZeroTicketCount)]
+    #[expected_failure(abort_code = anglerfish::round::ErrorZeroTicketCount)]
     fun test_round_add_zero_tickets() {
         let mut scenario = ts::begin(ADMIN);
         let (prize_pool_cap, phase_info_cap, pool_cap, lounge_cap, round_registry_cap) = setup(&mut scenario);
@@ -322,6 +322,8 @@ module anglerfish::anglerfish_tests {
         ts::next_tx(&mut scenario, ADMIN);
         let mut round_registry = ts::take_shared<RoundRegistry>(&scenario);
         let round_id = round::create_round(&round_registry_cap, &mut round_registry, 1, ts::ctx(&mut scenario));
+
+        ts::next_tx(&mut scenario, ADMIN);
         let mut round = ts::take_shared_by_id<Round>(&scenario, round_id);
 
         round::add_player_ticket(&mut round, USER1, 0);
@@ -347,7 +349,7 @@ module anglerfish::anglerfish_tests {
         {
             let mut phase_info = ts::take_shared<PhaseInfo>(&scenario);
             let mut round_registry = ts::take_shared<RoundRegistry>(&scenario);
-            let mut clock = clock::create_for_testing(ts::ctx(&mut scenario));
+            let clock = clock::create_for_testing(ts::ctx(&mut scenario));
             prize_pool::start_new_round(
                 &prize_pool_cap,
                 &round_registry_cap,
@@ -421,7 +423,7 @@ module anglerfish::anglerfish_tests {
         {
             let mut phase_info = ts::take_shared<PhaseInfo>(&scenario);
             let mut round_registry = ts::take_shared<RoundRegistry>(&scenario);
-            let mut clock = clock::create_for_testing(ts::ctx(&mut scenario));
+            let clock = clock::create_for_testing(ts::ctx(&mut scenario));
             prize_pool::start_new_round(
                 &prize_pool_cap,
                 &round_registry_cap,
@@ -510,6 +512,7 @@ module anglerfish::anglerfish_tests {
         assert_eq(prize_pool::get_lp_fee_reserves_value<TEST_COIN>(&prize_pool), 750); // 3000 * 2500 / 10000
         assert_eq(prize_pool::get_protocol_fee_reserves_value<TEST_COIN>(&prize_pool), 150); // 3000 * 500 / 10000
 
+        ts::next_tx(&mut scenario, ADMIN);
         clock::destroy_for_testing(clock);
         ts::return_shared(prize_pool);
         ts::return_shared(round);
@@ -520,12 +523,12 @@ module anglerfish::anglerfish_tests {
         ts::return_to_sender(&scenario, pool_cap);
         ts::return_to_sender(&scenario, lounge_cap);
         ts::return_to_sender(&scenario, round_registry_cap);
-        ts::return_to_sender(&scenario, remaining_coin);
+        coin::burn_for_testing( remaining_coin);
         ts::end(scenario);
     }
 
     #[test]
-    #[expected_failure(abort_code = anglerfish::errors::EPurchaseAmountTooLow)]
+    #[expected_failure(abort_code = anglerfish::prize_pool::ErrorPurchaseAmountTooLow)]
     fun test_purchase_ticket_zero() {
         let mut scenario = ts::begin(ADMIN);
         let (prize_pool_cap, phase_info_cap, pool_cap, lounge_cap, round_registry_cap) = setup(&mut scenario);
