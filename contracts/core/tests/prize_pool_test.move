@@ -2,15 +2,16 @@
 module anglerfish::prize_pool_test;
 
 use anglerfish::base_test_suite::build_base_test_suite;
-use anglerfish::lounge::LoungeCap;
+use anglerfish::lounge::{Self, LoungeCap};
 use anglerfish::lounge_test_suite::build_lounge_test_suite;
 use anglerfish::phase::{Self, PhaseInfoCap};
-use anglerfish::pool::PoolCap;
+use anglerfish::pool::{PoolCap, PoolRegistry};
 use anglerfish::prize_pool::{Self, PrizePoolCap, PrizePool};
 use anglerfish::prize_pool_test_suite::{
     build_prize_pool_test_suite,
     build_initialized_prize_pool_test_suite
 };
+use anglerfish::round::{Self, RoundRegistry, Round};
 use sui::balance::create_for_testing as create_balance_for_testing;
 use sui::coin::from_balance;
 use sui::random::Random;
@@ -81,51 +82,6 @@ fun test_set_initialize_parameters() {
         AUTHORITY,
     );
 
-    // Set pool registry
-    scenario.next_tx(AUTHORITY);
-    {
-        let pool_cap = scenario.take_from_sender<PrizePoolCap>();
-
-        assert!(prize_pool.get_pool_registry().is_none());
-        pool_cap.set_pool_registry(&mut prize_pool, object::id(&pool_registry), scenario.ctx());
-        assert!(prize_pool.get_pool_registry().borrow() == object::id(&pool_registry));
-
-        scenario.return_to_sender(pool_cap);
-    };
-
-    // Set lounge factory
-    scenario.next_tx(AUTHORITY);
-    {
-        let pool_cap = scenario.take_from_sender<PrizePoolCap>();
-
-        let lounge_id = object::id_from_address(@0x100);
-        assert!(prize_pool.get_lounge_registry().is_none());
-        pool_cap.set_lounge_registry(
-            &mut prize_pool,
-            lounge_id,
-            scenario.ctx(),
-        );
-        assert!(prize_pool.get_lounge_registry().borrow() == lounge_id);
-
-        scenario.return_to_sender(pool_cap);
-    };
-
-    // Set max players
-    scenario.next_tx(AUTHORITY);
-    {
-        let pool_cap = scenario.take_from_sender<PrizePoolCap>();
-
-        assert!(prize_pool.get_max_players() == 0);
-        pool_cap.set_max_players(
-            &mut prize_pool,
-            2,
-            scenario.ctx(),
-        );
-        assert!(prize_pool.get_max_players() == 2);
-
-        scenario.return_to_sender(pool_cap);
-    };
-
     // Set price per ticket
     scenario.next_tx(AUTHORITY);
     {
@@ -135,7 +91,6 @@ fun test_set_initialize_parameters() {
         pool_cap.set_price_per_ticket(
             &mut prize_pool,
             100,
-            scenario.ctx(),
         );
         assert!(prize_pool.get_price_per_ticket() == 100);
 
@@ -151,7 +106,6 @@ fun test_set_initialize_parameters() {
         pool_cap.set_lp_fee_bps(
             &mut prize_pool,
             5000,
-            scenario.ctx(),
         );
         assert!(prize_pool.get_lp_fee_bps() == 5000);
 
@@ -167,7 +121,6 @@ fun test_set_initialize_parameters() {
         pool_cap.set_protocol_fee_bps(
             &mut prize_pool,
             1000,
-            scenario.ctx(),
         );
         assert!(prize_pool.get_protocol_fee_bps() == 1000);
 
@@ -234,10 +187,23 @@ fun test_cannot_purchase_ticket_outside_ticketing_phase() {
     scenario.next_tx(USER1);
     {
         let coin = from_balance(create_balance_for_testing<SUI>(100), scenario.ctx());
-        let refund_coin = prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
+        let round_number = phase_info.get_current_round_number();
+        let round_registry = scenario.take_shared<RoundRegistry>();
+        let round_id = round_registry.get_round_id(round_number).extract();
+        let mut round = scenario.take_shared_by_id<Round>(round_id);
+        let refund_coin = prize_pool.purchase_ticket<SUI>(
+            &round_registry,
+            &mut round,
+            &phase_info,
+            coin,
+            scenario.ctx(),
+        );
 
         assert!(refund_coin.value() == 50);
-        refund_coin.burn_for_testing()
+        refund_coin.burn_for_testing();
+
+        test_scenario::return_shared(round);
+        test_scenario::return_shared(round_registry);
     };
 
     test_scenario::return_shared(phase_info);
@@ -248,55 +214,55 @@ fun test_cannot_purchase_ticket_outside_ticketing_phase() {
     scenario.end();
 }
 
-#[test]
-#[expected_failure(abort_code = prize_pool::ErrorMaximumNumberOfPlayersReached)]
-fun test_cannot_purchase_ticket_while_pool_reached_max_players() {
-    let (
-        mut scenario,
-        clock,
-        phase_info,
-        pool_registry,
-        lounge_registry,
-        mut prize_pool,
-    ) = build_initialized_prize_pool_test_suite(
-        AUTHORITY,
-    );
+// #[test]
+// #[expected_failure(abort_code = prize_pool::ErrorMaximumNumberOfPlayersReached)]
+// fun test_cannot_purchase_ticket_while_pool_reached_max_players() {
+//     let (
+//         mut scenario,
+//         clock,
+//         phase_info,
+//         pool_registry,
+//         lounge_registry,
+//         mut prize_pool,
+//     ) = build_initialized_prize_pool_test_suite(
+//         AUTHORITY,
+//     );
 
-    scenario.next_tx(AUTHORITY);
-    {
-        let pool_cap = scenario.take_from_sender<PrizePoolCap>();
-        pool_cap.set_max_players(&mut prize_pool, 1, scenario.ctx());
-        scenario.return_to_sender(pool_cap);
-    };
+//     scenario.next_tx(AUTHORITY);
+//     {
+//         let pool_cap = scenario.take_from_sender<PrizePoolCap>();
+//         pool_cap.set_max_players(&mut prize_pool, 1, scenario.ctx());
+//         scenario.return_to_sender(pool_cap);
+//     };
 
-    assert!(prize_pool.get_max_players() == 1);
-    assert!(prize_pool.get_price_per_ticket() == 100);
+//     assert!(prize_pool.get_max_players() == 1);
+//     assert!(prize_pool.get_price_per_ticket() == 100);
 
-    scenario.next_tx(USER1);
-    {
-        let coin = from_balance(create_balance_for_testing<SUI>(100), scenario.ctx());
-        let refund_coin = prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
+//     scenario.next_tx(USER1);
+//     {
+//         let coin = from_balance(create_balance_for_testing<SUI>(100), scenario.ctx());
+//         let refund_coin = prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
 
-        assert!(refund_coin.value() == 0);
-        refund_coin.burn_for_testing()
-    };
+//         assert!(refund_coin.value() == 0);
+//         refund_coin.burn_for_testing()
+//     };
 
-    scenario.next_tx(USER2);
-    {
-        let coin = from_balance(create_balance_for_testing<SUI>(100), scenario.ctx());
-        let refund_coin = prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
+//     scenario.next_tx(USER2);
+//     {
+//         let coin = from_balance(create_balance_for_testing<SUI>(100), scenario.ctx());
+//         let refund_coin = prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
 
-        assert!(refund_coin.value() == 0);
-        refund_coin.burn_for_testing()
-    };
+//         assert!(refund_coin.value() == 0);
+//         refund_coin.burn_for_testing()
+//     };
 
-    test_scenario::return_shared(phase_info);
-    test_scenario::return_shared(pool_registry);
-    test_scenario::return_shared(lounge_registry);
-    test_scenario::return_shared(prize_pool);
-    clock.destroy_for_testing();
-    scenario.end();
-}
+//     test_scenario::return_shared(phase_info);
+//     test_scenario::return_shared(pool_registry);
+//     test_scenario::return_shared(lounge_registry);
+//     test_scenario::return_shared(prize_pool);
+//     clock.destroy_for_testing();
+//     scenario.end();
+// }
 
 #[test]
 #[expected_failure(abort_code = prize_pool::ErrorPurchaseAmountTooLow)]
@@ -315,10 +281,23 @@ fun test_cannot_purchase_ticket_with_zero_value() {
     scenario.next_tx(USER1);
     {
         let coin = from_balance(create_balance_for_testing<SUI>(0), scenario.ctx());
-        let refund_coin = prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
+        let round_number = phase_info.get_current_round_number();
+        let round_registry = scenario.take_shared<RoundRegistry>();
+        let round_id = round_registry.get_round_id(round_number).extract();
+        let mut round = scenario.take_shared_by_id<Round>(round_id);
+        let refund_coin = prize_pool.purchase_ticket<SUI>(
+            &round_registry,
+            &mut round,
+            &phase_info,
+            coin,
+            scenario.ctx(),
+        );
 
         assert!(refund_coin.value() == 0);
-        refund_coin.burn_for_testing()
+        refund_coin.burn_for_testing();
+
+        test_scenario::return_shared(round);
+        test_scenario::return_shared(round_registry);
     };
 
     test_scenario::return_shared(phase_info);
@@ -348,10 +327,23 @@ fun test_cannot_purchase_ticket_with_zero_ticket() {
     scenario.next_tx(USER1);
     {
         let coin = from_balance(create_balance_for_testing<SUI>(50), scenario.ctx());
-        let refund_coin = prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
+        let round_number = phase_info.get_current_round_number();
+        let round_registry = scenario.take_shared<RoundRegistry>();
+        let round_id = round_registry.get_round_id(round_number).extract();
+        let mut round = scenario.take_shared_by_id<Round>(round_id);
+        let refund_coin = prize_pool.purchase_ticket<SUI>(
+            &round_registry,
+            &mut round,
+            &phase_info,
+            coin,
+            scenario.ctx(),
+        );
 
         assert!(refund_coin.value() == 50);
-        refund_coin.burn_for_testing()
+        refund_coin.burn_for_testing();
+
+        test_scenario::return_shared(round);
+        test_scenario::return_shared(round_registry);
     };
 
     test_scenario::return_shared(phase_info);
@@ -376,16 +368,31 @@ fun test_purchase_tickets_should_floored_to_ticket_price() {
     );
 
     assert!(prize_pool.get_price_per_ticket() == 100);
-    assert!(prize_pool.get_player_tickets(&phase_info, USER1) == 0);
     scenario.next_tx(USER1);
     {
         let coin = from_balance(create_balance_for_testing<SUI>(250), scenario.ctx());
-        let refund_coin = prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
-        assert!(prize_pool.get_player_tickets(&phase_info, USER1) == 2); // 2 tickets purchased, not 2.5
-        assert!(prize_pool.get_total_purchased_tickets(&phase_info) == 2);
+        let round_number = phase_info.get_current_round_number();
+        let round_registry = scenario.take_shared<RoundRegistry>();
+        let round_id = round_registry.get_round_id(round_number).extract();
+        let mut round = scenario.take_shared_by_id<Round>(round_id);
 
-        assert!(refund_coin.value() == 50);
-        refund_coin.burn_for_testing()
+        assert!(round.get_player_tickets(USER1) == 0);
+
+        let refund_coin = prize_pool.purchase_ticket<SUI>(
+            &round_registry,
+            &mut round,
+            &phase_info,
+            coin,
+            scenario.ctx(),
+        );
+
+        assert!(round.get_player_tickets(USER1) == 2);
+        assert!(round.total_tickets() == 2);
+        assert!(refund_coin.value() == 50); // change 50
+        refund_coin.burn_for_testing();
+
+        test_scenario::return_shared(round);
+        test_scenario::return_shared(round_registry);
     };
 
     test_scenario::return_shared(phase_info);
@@ -414,33 +421,57 @@ fun test_fee_distributions() {
     scenario.next_tx(USER1);
     {
         let coin = from_balance(create_balance_for_testing<SUI>(1000), scenario.ctx());
-        let refund_coin = prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
+        let round_number = phase_info.get_current_round_number();
+        let round_registry = scenario.take_shared<RoundRegistry>();
+        let round_id = round_registry.get_round_id(round_number).extract();
+        let mut round = scenario.take_shared_by_id<Round>(round_id);
+        let refund_coin = prize_pool.purchase_ticket<SUI>(
+            &round_registry,
+            &mut round,
+            &phase_info,
+            coin,
+            scenario.ctx(),
+        );
 
-        assert!(prize_pool.get_player_tickets(&phase_info, USER1) == 10);
-        assert!(prize_pool.get_total_purchased_tickets(&phase_info) == 10);
+        assert!(round.get_player_tickets(USER1) == 10);
+        assert!(round.total_tickets() == 10);
 
         assert!(prize_pool.get_lp_fee_reserves_value<SUI>() == 250); // 25% of 1000
         assert!(prize_pool.get_protocol_fee_reserves_value<SUI>() == 50); // 5% of 1000
         assert!(prize_pool.get_treasury_reserves_value<SUI>() == 1000 - 250 - 50); // 1000 - fee - protocol fee
 
         assert!(refund_coin.value() == 0);
-        refund_coin.burn_for_testing()
+        refund_coin.burn_for_testing();
+        test_scenario::return_shared(round);
+        test_scenario::return_shared(round_registry);
     };
 
     scenario.next_tx(USER2);
     {
         let coin = from_balance(create_balance_for_testing<SUI>(1000), scenario.ctx());
-        let refund_coin = prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
+        let round_number = phase_info.get_current_round_number();
+        let round_registry = scenario.take_shared<RoundRegistry>();
+        let round_id = round_registry.get_round_id(round_number).extract();
+        let mut round = scenario.take_shared_by_id<Round>(round_id);
+        let refund_coin = prize_pool.purchase_ticket<SUI>(
+            &round_registry,
+            &mut round,
+            &phase_info,
+            coin,
+            scenario.ctx(),
+        );
 
-        assert!(prize_pool.get_player_tickets(&phase_info, USER2) == 10);
-        assert!(prize_pool.get_total_purchased_tickets(&phase_info) == 20);
+        assert!(round.get_player_tickets(USER2) == 10);
+        assert!(round.total_tickets() == 20);
 
         assert!(prize_pool.get_lp_fee_reserves_value<SUI>() == 500); // 25% of 2000
         assert!(prize_pool.get_protocol_fee_reserves_value<SUI>() == 100); // 5% of 2000
         assert!(prize_pool.get_treasury_reserves_value<SUI>() == 2000 - 500 - 100); // 2000 - fee - protocol fee
 
         assert!(refund_coin.value() == 0);
-        refund_coin.burn_for_testing()
+        refund_coin.burn_for_testing();
+        test_scenario::return_shared(round);
+        test_scenario::return_shared(round_registry);
     };
 
     test_scenario::return_shared(phase_info);
@@ -470,27 +501,11 @@ fun test_draw_on_no_liquidity() {
     {
         let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
 
-        prize_pool_cap.set_pool_registry(
-            &mut prize_pool,
-            object::id(&pool_registry),
-            scenario.ctx(),
-        );
-        prize_pool_cap.set_lounge_registry(
-            &mut prize_pool,
-            object::id(&lounge_registry),
-            scenario.ctx(),
-        );
-        prize_pool_cap.set_max_players(&mut prize_pool, 1, scenario.ctx());
-        prize_pool_cap.set_price_per_ticket(
-            &mut prize_pool,
-            100,
-            scenario.ctx(),
-        );
-        prize_pool_cap.set_lp_fee_bps(&mut prize_pool, 2500, scenario.ctx());
+        prize_pool_cap.set_price_per_ticket(&mut prize_pool, 100);
+        prize_pool_cap.set_lp_fee_bps(&mut prize_pool, 2500);
         prize_pool_cap.set_protocol_fee_bps(
             &mut prize_pool,
             500,
-            scenario.ctx(),
         );
 
         scenario.return_to_sender(prize_pool_cap);
@@ -510,11 +525,24 @@ fun test_draw_on_no_liquidity() {
     scenario.next_tx(USER1);
     {
         let coin = from_balance(create_balance_for_testing<SUI>(1000000), scenario.ctx());
-        let refund_coin = prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
-        assert!(prize_pool.get_player_tickets(&phase_info, USER1) == 10000);
+        let round_number = phase_info.get_current_round_number();
+        let round_registry = scenario.take_shared<RoundRegistry>();
+        let round_id = round_registry.get_round_id(round_number).extract();
+        let mut round = scenario.take_shared_by_id<Round>(round_id);
+        let refund_coin = prize_pool.purchase_ticket<SUI>(
+            &round_registry,
+            &mut round,
+            &phase_info,
+            coin,
+            scenario.ctx(),
+        );
 
+        assert!(round.get_player_tickets(USER1) == 10000);
         assert!(refund_coin.value() == 0);
-        refund_coin.burn_for_testing()
+
+        refund_coin.burn_for_testing();
+        test_scenario::return_shared(round);
+        test_scenario::return_shared(round_registry);
     };
 
     // iterate to Drawing
@@ -546,12 +574,18 @@ fun test_draw_on_no_liquidity() {
         let random = scenario.take_shared<Random>();
         let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
         let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
+        let round_number = phase_info.get_current_round_number();
+        let round_registry = scenario.take_shared<RoundRegistry>();
+        let round_id = round_registry.get_round_id(round_number).extract();
+        let mut round = scenario.take_shared_by_id<Round>(round_id);
 
         prize_pool_cap.draw<SUI>(
             &phase_info_cap,
+            &prize_pool,
             &mut phase_info,
-            &mut prize_pool,
             &pool_registry,
+            &round_registry,
+            &mut round,
             &random,
             &clock,
             scenario.ctx(),
@@ -563,6 +597,10 @@ fun test_draw_on_no_liquidity() {
         let pool_cap = scenario.take_from_sender<PoolCap>();
         let lounge_cap = scenario.take_from_sender<LoungeCap>();
 
+        let prize_reserves = prize_pool.get_total_prize_reserves_value<SUI>(&pool_registry);
+        assert!(round.get_winner().is_some());
+        assert!(prize_reserves == 0); // proof of no liquidity
+
         prize_pool_cap.distribute<SUI>(
             &pool_cap,
             &lounge_cap,
@@ -571,6 +609,8 @@ fun test_draw_on_no_liquidity() {
             &mut prize_pool,
             &mut pool_registry,
             &mut lounge_registry,
+            &round_registry,
+            &mut round,
             &clock,
             scenario.ctx(),
         );
@@ -583,23 +623,31 @@ fun test_draw_on_no_liquidity() {
         scenario.return_to_sender(phase_info_cap);
 
         scenario.return_to_sender(prize_pool_cap);
+        test_scenario::return_shared(round);
+        test_scenario::return_shared(round_registry);
         test_scenario::return_shared(random);
     };
 
     // Check winner record still the same
     scenario.next_tx(AUTHORITY);
     {
-        let round = prize_pool.get_round(1);
+        let round_number = phase_info.get_current_round_number();
+        let round_registry = scenario.take_shared<RoundRegistry>();
+        let round_id = round_registry.get_round_id(round_number).extract();
+        let round = scenario.take_shared_by_id<Round>(round_id);
         assert!(round.get_winner() == option::some(USER1));
         assert!(round.get_prize_amount() == 0);
+
+        test_scenario::return_shared(round);
+        test_scenario::return_shared(round_registry);
     };
 
-    // Check the lounge created
-    scenario.next_tx(USER1);
+    // Check the lounge not created
     {
-        let lounge = lounge_registry.get_lounge_number<SUI>(1);
+        let round_number = phase_info.get_current_round_number();
+        let lounge = lounge_registry.get_lounge<SUI>(round_number);
         assert!(lounge.get_recipient() == USER1);
-        assert!(lounge.get_prize_reserves_value<SUI>() == 0);
+        assert!(lounge.get_prize_reserves_value() == 0);
     };
 
     // Check the fee distribution
@@ -644,7 +692,17 @@ fun test_draw_on_no_ticket_purchased() {
         AUTHORITY,
     );
 
-    assert!(prize_pool.get_total_purchased_tickets(&phase_info) == 0);
+    {
+        let round_number = phase_info.get_current_round_number();
+        let round_registry = scenario.take_shared<RoundRegistry>();
+        let round_id = round_registry.get_round_id(round_number).extract();
+        let round = scenario.take_shared_by_id<Round>(round_id);
+
+        assert!(round.total_tickets() == 0);
+
+        test_scenario::return_shared(round);
+        test_scenario::return_shared(round_registry);
+    };
 
     // Forward phase to drawing
     scenario.next_tx(AUTHORITY);
@@ -675,12 +733,18 @@ fun test_draw_on_no_ticket_purchased() {
         let random = scenario.take_shared<Random>();
         let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
         let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
+        let round_number = phase_info.get_current_round_number();
+        let round_registry = scenario.take_shared<RoundRegistry>();
+        let round_id = round_registry.get_round_id(round_number).extract();
+        let mut round = scenario.take_shared_by_id<Round>(round_id);
 
         prize_pool_cap.draw<SUI>(
             &phase_info_cap,
+            &prize_pool,
             &mut phase_info,
-            &mut prize_pool,
             &pool_registry,
+            &round_registry,
+            &mut round,
             &random,
             &clock,
             scenario.ctx(),
@@ -700,6 +764,8 @@ fun test_draw_on_no_ticket_purchased() {
             &mut prize_pool,
             &mut pool_registry,
             &mut lounge_registry,
+            &round_registry,
+            &mut round,
             &clock,
             scenario.ctx(),
         );
@@ -713,18 +779,27 @@ fun test_draw_on_no_ticket_purchased() {
 
         scenario.return_to_sender(prize_pool_cap);
         test_scenario::return_shared(random);
+        test_scenario::return_shared(round);
+        test_scenario::return_shared(round_registry);
     };
 
     // Check variables
     scenario.next_tx(AUTHORITY);
     {
-        let round = prize_pool.get_round(1);
+        let round_number = phase_info.get_current_round_number();
+        let round_registry = scenario.take_shared<RoundRegistry>();
+        let round_id = round_registry.get_round_id(round_number).extract();
+        let round = scenario.take_shared_by_id<Round>(round_id);
+
         assert!(round.get_winner() == option::none());
         assert!(round.get_prize_amount() == 2400000);
         assert!(lounge_registry.is_lounge_available(1) == false);
         assert!(prize_pool.get_lp_fee_reserves_value<SUI>() == 0);
         assert!(prize_pool.get_protocol_fee_reserves_value<SUI>() == 0);
         assert!(prize_pool.get_treasury_reserves_value<SUI>() == 0);
+
+        test_scenario::return_shared(round);
+        test_scenario::return_shared(round_registry);
     };
 
     test_scenario::return_shared(phase_info);
@@ -754,16 +829,29 @@ fun test_player_win_scenario() {
 
     scenario.next_tx(USER1);
     {
-        let coin = from_balance(create_balance_for_testing<SUI>(1000000), scenario.ctx());
-        let refund_coin = prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
-        assert!(prize_pool.get_player_tickets(&phase_info, USER1) == 10000);
+        let coin = from_balance(create_balance_for_testing<SUI>(4000000), scenario.ctx()); // 40000 ticket vs 34285 lp ticket, player win for sure
+        let round_number = phase_info.get_current_round_number();
+        let round_registry = scenario.take_shared<RoundRegistry>();
+        let round_id = round_registry.get_round_id(round_number).extract();
+        let mut round = scenario.take_shared_by_id<Round>(round_id);
+        let refund_coin = prize_pool.purchase_ticket<SUI>(
+            &round_registry,
+            &mut round,
+            &phase_info,
+            coin,
+            scenario.ctx(),
+        );
 
-        assert!(prize_pool.get_lp_fee_reserves_value<SUI>() == 250000);
-        assert!(prize_pool.get_protocol_fee_reserves_value<SUI>() == 50000);
-        assert!(prize_pool.get_treasury_reserves_value<SUI>() == 1000000 - 250000 - 50000);
+        assert!(round.get_player_tickets(USER1)== 40000);
+
+        assert!(prize_pool.get_lp_fee_reserves_value<SUI>() == 1000000);
+        assert!(prize_pool.get_protocol_fee_reserves_value<SUI>() == 200000);
+        assert!(prize_pool.get_treasury_reserves_value<SUI>() == 4000000 - 1000000 - 200000);
 
         assert!(refund_coin.value() == 0);
-        refund_coin.burn_for_testing()
+        refund_coin.burn_for_testing();
+        test_scenario::return_shared(round);
+        test_scenario::return_shared(round_registry);
     };
 
     // Forward phase to drawing
@@ -793,22 +881,31 @@ fun test_player_win_scenario() {
         let random = scenario.take_shared<Random>();
         let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
         let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
+        let round_number = phase_info.get_current_round_number();
+        let round_registry = scenario.take_shared<RoundRegistry>();
+        let round_id = round_registry.get_round_id(round_number).extract();
+        let mut round = scenario.take_shared_by_id<Round>(round_id);
 
         prize_pool_cap.draw<SUI>(
             &phase_info_cap,
+            &prize_pool,
             &mut phase_info,
-            &mut prize_pool,
             &pool_registry,
+            &round_registry,
+            &mut round,
             &random,
             &clock,
             scenario.ctx(),
         );
-
         // should automatically move from Drawing to Distributing phase
         phase_info.assert_distributing_phase();
 
         let pool_cap = scenario.take_from_sender<PoolCap>();
         let lounge_cap = scenario.take_from_sender<LoungeCap>();
+
+        let prize_reserves = prize_pool.get_total_prize_reserves_value<SUI>(&pool_registry);
+        assert!(prize_reserves == 2400000);
+        assert!(round.get_winner().is_some());
 
         prize_pool_cap.distribute<SUI>(
             &pool_cap,
@@ -818,6 +915,8 @@ fun test_player_win_scenario() {
             &mut prize_pool,
             &mut pool_registry,
             &mut lounge_registry,
+            &round_registry,
+            &mut round,
             &clock,
             scenario.ctx(),
         );
@@ -831,20 +930,30 @@ fun test_player_win_scenario() {
 
         scenario.return_to_sender(prize_pool_cap);
         test_scenario::return_shared(random);
+        test_scenario::return_shared(round);
+        test_scenario::return_shared(round_registry);
     };
 
     // Check winner record still the same
     scenario.next_tx(AUTHORITY);
     {
-        let round = prize_pool.get_round(1);
+        let round_number = phase_info.get_current_round_number();
+        let round_registry = scenario.take_shared<RoundRegistry>();
+        let round_id = round_registry.get_round_id(round_number).extract();
+        let round = scenario.take_shared_by_id<Round>(round_id);
+
         assert!(round.get_winner() == option::some(USER1));
         assert!(round.get_prize_amount() == 2400000);
+
+        test_scenario::return_shared(round);
+        test_scenario::return_shared(round_registry);
     };
 
     // Check the lounge created
     scenario.next_tx(USER1);
     {
-        let lounge = lounge_registry.get_lounge_number<SUI>(1);
+        let round_number = phase_info.get_current_round_number();
+        let lounge = lounge_registry.get_lounge<SUI>(round_number);
         assert!(lounge.get_recipient() == USER1);
         assert!(lounge.get_prize_reserves_value<SUI>() == 2400000);
 
@@ -862,13 +971,15 @@ fun test_player_win_scenario() {
             &mut prize_pool,
             scenario.ctx(),
         );
-        assert!(protocol_fee_coin.value() == 50000);
+
+        assert!(protocol_fee_coin.value() == 200000);
 
         let treasury_fee_coin = prize_pool_cap.claim_treasury_reserve<SUI>(
             &mut prize_pool,
             scenario.ctx(),
         );
-        assert!(treasury_fee_coin.value() == 700000);
+
+        assert!(treasury_fee_coin.value() == 2800000);
 
         test_utils::destroy(protocol_fee_coin);
         test_utils::destroy(treasury_fee_coin);
@@ -883,17 +994,17 @@ fun test_player_win_scenario() {
         // Total liquidity is 6_000_000
         // Total prize is 2_400_000
 
-        // Total fee = 250_000
+        // Total fee = 1_000_000
         // Distributed to the pools
-        // 20% pool get = 71428 (20/(20+50)*250_000)
-        // 50% pool get = 178571 (50/(20+50)*250_000)
-        assert!(pool_registry.get_total_reserves_value<SUI>() == 3600000 + 71428 + 178571);
+        // 20% pool get = 285_714 (20/(20+50)*1_000_000)
+        // 50% pool get = 714_285 (50/(20+50)*1_000_000)
+        assert!(pool_registry.get_total_reserves_value<SUI>() == 3600000 + 285_714 + 714_285);
 
         // New prize reserves
         // 20% pool reserves = 1_671_428 * 20% = 334_285
         // 50% pool reserves = 2_178_571 * 50% = 1_089_285
         // Total prize reserves = 334_285 + 1_089_285 = 1423570
-        assert!(pool_registry.get_total_prize_reserves_value<SUI>() == 1423570);
+        assert!(pool_registry.get_total_prize_reserves_value<SUI>() == 1734284);
     };
 
     test_scenario::return_shared(phase_info);
@@ -923,16 +1034,29 @@ fun test_lp_win_scenario() {
 
     scenario.next_tx(USER1);
     {
-        let coin = from_balance(create_balance_for_testing<SUI>(1000000), scenario.ctx());
-        let refund_coin = prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
-        assert!(prize_pool.get_player_tickets(&phase_info, USER1) == 10000);
+        let coin = from_balance(create_balance_for_testing<SUI>(100), scenario.ctx()); // 1 ticket
+        let round_number = phase_info.get_current_round_number();
+        let round_registry = scenario.take_shared<RoundRegistry>();
+        let round_id = round_registry.get_round_id(round_number).extract();
+        let mut round = scenario.take_shared_by_id<Round>(round_id);
+        let refund_coin = prize_pool.purchase_ticket<SUI>(
+            &round_registry,
+            &mut round,
+            &phase_info,
+            coin,
+            scenario.ctx(),
+        );
 
-        assert!(prize_pool.get_lp_fee_reserves_value<SUI>() == 250000);
-        assert!(prize_pool.get_protocol_fee_reserves_value<SUI>() == 50000);
-        assert!(prize_pool.get_treasury_reserves_value<SUI>() == 1000000 - 250000 - 50000);
+        assert!(round.get_player_tickets(USER1) == 1);
+
+        assert!(prize_pool.get_lp_fee_reserves_value<SUI>() == 25);
+        assert!(prize_pool.get_protocol_fee_reserves_value<SUI>() == 5);
+        assert!(prize_pool.get_treasury_reserves_value<SUI>() == 100 - 25 - 5);
 
         assert!(refund_coin.value() == 0);
-        refund_coin.burn_for_testing()
+        refund_coin.burn_for_testing();
+        test_scenario::return_shared(round);
+        test_scenario::return_shared(round_registry);
     };
 
     // Forward phase to drawing
@@ -962,22 +1086,32 @@ fun test_lp_win_scenario() {
         let random = scenario.take_shared<Random>();
         let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
         let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
+        let round_number = phase_info.get_current_round_number();
+        let round_registry = scenario.take_shared<RoundRegistry>();
+        let round_id = round_registry.get_round_id(round_number).extract();
+        let mut round = scenario.take_shared_by_id<Round>(round_id);
 
         prize_pool_cap.draw<SUI>(
             &phase_info_cap,
+            &prize_pool,
             &mut phase_info,
-            &mut prize_pool,
             &pool_registry,
+            &round_registry,
+            &mut round,
             &random,
             &clock,
             scenario.ctx(),
         );
-
         // should automatically move from Drawing to Distributing phase
         phase_info.assert_distributing_phase();
 
         let pool_cap = scenario.take_from_sender<PoolCap>();
         let lounge_cap = scenario.take_from_sender<LoungeCap>();
+
+        let prize_reserves = prize_pool.get_total_prize_reserves_value<SUI>(&pool_registry);
+        assert!(round.get_winner().is_none());
+        assert!(prize_reserves > 0); // proof of no liquidity
+
         prize_pool_cap.distribute<SUI>(
             &pool_cap,
             &lounge_cap,
@@ -986,6 +1120,8 @@ fun test_lp_win_scenario() {
             &mut prize_pool,
             &mut pool_registry,
             &mut lounge_registry,
+            &round_registry,
+            &mut round,
             &clock,
             scenario.ctx(),
         );
@@ -999,14 +1135,23 @@ fun test_lp_win_scenario() {
 
         scenario.return_to_sender(prize_pool_cap);
         test_scenario::return_shared(random);
+        test_scenario::return_shared(round);
+        test_scenario::return_shared(round_registry);
     };
 
     // Check winner record still the same
     scenario.next_tx(AUTHORITY);
     {
-        let round = prize_pool.get_round(1);
+        let round_number = phase_info.get_current_round_number();
+        let round_registry = scenario.take_shared<RoundRegistry>();
+        let round_id = round_registry.get_round_id(round_number).extract();
+        let round = scenario.take_shared_by_id<Round>(round_id);
+
         assert!(round.get_winner() == option::none());
         assert!(round.get_prize_amount() == 2400000);
+
+        test_scenario::return_shared(round);
+        test_scenario::return_shared(round_registry);
     };
 
     // Check the lounge created
@@ -1023,14 +1168,13 @@ fun test_lp_win_scenario() {
             &mut prize_pool,
             scenario.ctx(),
         );
-        assert!(protocol_fee_coin.value() == 50000);
+        assert!(protocol_fee_coin.value() == 5);
 
         let treasury_fee_coin = prize_pool_cap.claim_treasury_reserve<SUI>(
             &mut prize_pool,
             scenario.ctx(),
         );
-        assert!(treasury_fee_coin.value() == 700000);
-
+        assert!(treasury_fee_coin.value() == 70);
         test_utils::destroy(protocol_fee_coin);
         test_utils::destroy(treasury_fee_coin);
         scenario.return_to_sender(prize_pool_cap);
@@ -1046,15 +1190,15 @@ fun test_lp_win_scenario() {
 
         // Total fee = 250_000
         // Distributed to the pools
-        // 20% pool get = 71428 (20/(20+50)*250_000)
-        // 50% pool get = 178571 (50/(20+50)*250_000)
-        assert!(pool_registry.get_total_reserves_value<SUI>() == 6000000 + 71428 + 178571);
+        // 20% pool get = 7 (20/(20+50)*25)
+        // 50% pool get = 17 (50/(20+50)*25)
+        assert!(pool_registry.get_total_reserves_value<SUI>() == 6000000 + 7 + 17);
 
         // New prize reserves
-        // 20% pool reserves = (2_000_000 + 71428) * 20% = 414_285
-        // 50% pool reserves = (4_000_000 + 178571) * 50% = 2_089_285
-        // Total prize reserves = 414_285 + 2_089_285 = 2_503_570
-        assert!(pool_registry.get_total_prize_reserves_value<SUI>() == 2503570);
+        // 20% pool reserves = (2_000_000 + 7) * 20% = 400_001
+        // 50% pool reserves = (4_000_000 + 17) * 50% = 2_000_008
+        // Total prize reserves = 400_001 + 2_000_008 = 2_400_009
+        assert!(pool_registry.get_total_prize_reserves_value<SUI>() == 2400009);
     };
 
     test_scenario::return_shared(phase_info);

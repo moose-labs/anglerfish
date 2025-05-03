@@ -45,7 +45,7 @@ fun test_capability_cannot_be_taken_by_unauthorized_user() {
 }
 
 #[test]
-#[expected_failure(abort_code = lounge::ErrorRecipientCannotBeZero)]
+#[expected_failure(abort_code = lounge::ErrorRecipientZero)]
 fun test_cannot_create_lounge_with_0x0_recipient() {
     let (
         mut scenario,

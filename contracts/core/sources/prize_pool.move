@@ -1,41 +1,45 @@
+/// Manages lottery ticket purchases, prize draws, and distributions.
 module anglerfish::prize_pool;
 
 use anglerfish::lounge::{LoungeCap, LoungeRegistry};
 use anglerfish::phase::{PhaseInfo, PhaseInfoCap};
 use anglerfish::pool::{PoolRegistry, PoolCap};
-use anglerfish::round::{Self, Round};
+use anglerfish::round::{Round, RoundRegistry, RoundRegistryCap};
 use anglerfish::ticket_calculator::calculate_total_ticket_with_fees;
 use sui::bag::{Self, Bag};
 use sui::balance::{Self, Balance};
 use sui::clock::Clock;
 use sui::coin::{Self, Coin, from_balance};
+use sui::event::emit;
 use sui::random::{Random, new_generator};
-use sui::table::{Self, Table};
 
-const ErrorMaximumNumberOfPlayersReached: u64 = 1;
-const ErrorInvalidPoolRegistry: u64 = 2;
-const ErrorInvalidLoungeRegistry: u64 = 3;
-const ErrorPurchaseAmountTooLow: u64 = 4;
-const ErrorLpFeeAmountTooHigh: u64 = 5;
-const ErrorProtocolFeeAmountTooHigh: u64 = 6;
-const ErrorExcessiveFeeCharged: u64 = 6;
+const ErrorNotOneTimeWitness: u64 = 5001;
+const ErrorPurchaseAmountTooLow: u64 = 5002;
+const ErrorLpFeeAmountTooHigh: u64 = 5003;
+const ErrorProtocolFeeAmountTooHigh: u64 = 5004;
+const ErrorExcessiveFeeCharged: u64 = 5005;
+const ErrorInvalidRoundNumberSequence: u64 = 5006;
 
 const TREASURY_RESERVES_KEY: vector<u8> = b"treasury_reserves";
 const LP_FEE_RESERVES_KEY: vector<u8> = b"lp_fee_reserves";
 const PROTOCOL_FEE_RESERVES_KEY: vector<u8> = b"protocol_fee_reserves";
 
+/// PRIZE_POOL a OneTimeWitness struct
+public struct PRIZE_POOL has drop {}
+
+/// Capability for authorized PrizePool operations.
 public struct PrizePoolCap has key, store {
     id: UID,
 }
 
+public struct PrizePoolCapCreated has copy, drop {
+    cap_id: ID,
+}
+
+/// Shared object storing lottery configuration and state.
 public struct PrizePool has key {
+    /// Object Id
     id: UID,
-    /// The pool factory that hold pools
-    pool_registry: Option<ID>,
-    /// The lounge factory that can create lounges
-    lounge_registry: Option<ID>,
-    /// The maximum number of players that can participate in the prize pool each round
-    max_players: u64,
     /// The ticket price based on unit of the pool
     price_per_ticket: u64,
     /// The prize provider fees in basis points
@@ -44,93 +48,85 @@ public struct PrizePool has key {
     protocol_fee_bps: u64,
     /// The reserves bag that hold the purchased tickets, fees, and protocol fees
     reserves: Bag,
-    /// The table of round that contain participant address and their contribution
-    rounds: Table<u64, Round>,
-    /// An prize pool cap id that can manage the prize pool
-    authority: ID,
 }
 
-fun init(ctx: &mut TxContext) {
+/// Initializes PrizePool and PrizePoolCap with OneTimeWitness.
+fun init(witness: PRIZE_POOL, ctx: &mut TxContext) {
+    assert!(sui::types::is_one_time_witness(&witness), ErrorNotOneTimeWitness);
+
     let authority = ctx.sender();
 
     let authority_cap = PrizePoolCap {
         id: object::new(ctx),
     };
 
-    transfer::share_object(PrizePool {
+    let prize_pool = PrizePool {
         id: object::new(ctx),
-        pool_registry: option::none(),
-        lounge_registry: option::none(),
-        max_players: 0,
         price_per_ticket: 0,
         lp_fee_bps: 2500,
         protocol_fee_bps: 500,
         reserves: bag::new(ctx),
-        rounds: table::new(ctx),
-        authority: object::id(&authority_cap),
-    });
+    };
 
+    emit(PrizePoolCapCreated { cap_id: object::id(&authority_cap) });
+
+    transfer::share_object(prize_pool);
     transfer::transfer(authority_cap, authority);
 }
 
-/// Capability to manage the prize pool
-
-public fun set_pool_registry(
-    _self: &PrizePoolCap,
-    prize_pool: &mut PrizePool,
-    pool_registry_id: ID,
-    _ctx: &mut TxContext,
-) {
-    prize_pool.pool_registry = option::some(pool_registry_id);
-}
-
-public fun set_lounge_registry(
-    _self: &PrizePoolCap,
-    prize_pool: &mut PrizePool,
-    lounge_registry_id: ID,
-    _ctx: &mut TxContext,
-) {
-    prize_pool.lounge_registry = option::some(lounge_registry_id);
-}
-
-public fun set_max_players(
-    _self: &PrizePoolCap,
-    prize_pool: &mut PrizePool,
-    max_players: u64,
-    _ctx: &mut TxContext,
-) {
-    prize_pool.max_players = max_players;
-}
-
+/// Sets the price per ticket.
 public fun set_price_per_ticket(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
     price_per_ticket: u64,
-    _ctx: &mut TxContext,
 ) {
     prize_pool.price_per_ticket = price_per_ticket;
 }
 
-public fun set_lp_fee_bps(
-    _self: &PrizePoolCap,
-    prize_pool: &mut PrizePool,
-    lp_fee_bps: u64,
-    _ctx: &mut TxContext,
-) {
+/// Sets the liquidity provider fee in basis points.
+public fun set_lp_fee_bps(_self: &PrizePoolCap, prize_pool: &mut PrizePool, lp_fee_bps: u64) {
     assert!(lp_fee_bps < 6000, ErrorLpFeeAmountTooHigh);
     prize_pool.lp_fee_bps = lp_fee_bps;
 }
 
+/// Sets the protocol fee in basis points.
 public fun set_protocol_fee_bps(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
     protocol_fee_bps: u64,
-    _ctx: &mut TxContext,
 ) {
     assert!(protocol_fee_bps < 3000, ErrorProtocolFeeAmountTooHigh);
     prize_pool.protocol_fee_bps = protocol_fee_bps;
 }
 
+/// Starts a new round in Settling phase, advancing to LiquidityProviding.
+public fun start_new_round(
+    _self: &PrizePoolCap,
+    round_registry_cap: &RoundRegistryCap,
+    phase_info_cap: &PhaseInfoCap,
+    phase_info: &mut PhaseInfo,
+    round_registry: &mut RoundRegistry,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    // Must be in Settling phase
+    phase_info.assert_settling_phase();
+
+    let prev_round_number = phase_info.get_current_round_number();
+
+    // forward to next phase
+    phase_info_cap.next(phase_info, clock, ctx);
+
+    let current_round_number = phase_info.get_current_round_number();
+
+    // Capability for authorized PrizePool operations.
+    assert!(current_round_number == prev_round_number + 1, ErrorInvalidRoundNumberSequence);
+
+    // Create a new round in RoundRegistry
+    round_registry_cap.create_round(round_registry, current_round_number, ctx);
+}
+
+/// Claims all protocol fee reserves.
 public fun claim_protocol_fee<T>(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
@@ -141,6 +137,7 @@ public fun claim_protocol_fee<T>(
     fee_coin
 }
 
+/// Claims all treasury reserves.
 public fun claim_treasury_reserve<T>(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
@@ -149,18 +146,6 @@ public fun claim_treasury_reserve<T>(
     let reserves = prize_pool.inner_get_treasury_reserves_balance_mut<T>();
     let fee_coin = from_balance(reserves.withdraw_all(), ctx);
     fee_coin
-}
-
-public fun get_pool_registry(self: &PrizePool): Option<ID> {
-    self.pool_registry
-}
-
-public fun get_lounge_registry(self: &PrizePool): Option<ID> {
-    self.lounge_registry
-}
-
-public fun get_max_players(self: &PrizePool): u64 {
-    self.max_players
 }
 
 public fun get_price_per_ticket(self: &PrizePool): u64 {
@@ -175,63 +160,40 @@ public fun get_protocol_fee_bps(self: &PrizePool): u64 {
     self.protocol_fee_bps
 }
 
-public fun get_player_tickets(self: &PrizePool, phase_info: &PhaseInfo, player: address): u64 {
-    let current_round = phase_info.get_current_round();
-    if (!self.rounds.contains(current_round)) {
-        return 0
-    };
-
-    self.rounds.borrow(current_round).get_player_tickets(player)
-}
-
 /// Public views & functions
-///
 
+/// Gets the total prize reserves value from the pool registry.
 public fun get_total_prize_reserves_value<T>(_self: &PrizePool, pool_registry: &PoolRegistry): u64 {
     pool_registry.get_total_prize_reserves_value<T>()
 }
 
+/// Gets the value of treasury reserves.
 public fun get_treasury_reserves_value<T>(self: &PrizePool): u64 {
     self.inner_get_treasury_reserves_balance_value<T>()
 }
 
+/// Gets the value of liquidity provider fee reserves.
 public fun get_lp_fee_reserves_value<T>(self: &PrizePool): u64 {
     self.inner_get_lp_fee_reserves_balance_value<T>()
 }
 
+/// Gets the value of protocol fee reserves.
 public fun get_protocol_fee_reserves_value<T>(self: &PrizePool): u64 {
     self.inner_get_protocol_fee_reserves_balance_value<T>()
 }
 
-public fun get_total_purchased_tickets(self: &PrizePool, phase_info: &PhaseInfo): u64 {
-    let current_round = phase_info.get_current_round();
-    if (!self.rounds.contains(current_round)) {
-        return 0
-    };
-
-    self.rounds.borrow(current_round).get_total_purchased_tickets()
-}
-
-public fun get_round(self: &PrizePool, round: u64): &Round {
-    self.rounds.borrow(round)
-}
-
+/// Purchases tickets, allocating fees and adding tickets to the round.
 public fun purchase_ticket<T>(
     self: &mut PrizePool,
+    round_registry: &RoundRegistry,
+    round: &mut Round,
     phase_info: &PhaseInfo,
     purchase_coin: Coin<T>,
     ctx: &mut TxContext,
 ): Coin<T> {
     phase_info.assert_ticketing_phase();
-
-    assert!(self.pool_registry.is_some(), ErrorInvalidPoolRegistry);
-    assert!(self.lounge_registry.is_some(), ErrorInvalidLoungeRegistry);
-
-    // Check if the current round table already exists
-    let current_round = phase_info.get_current_round();
-    self.inner_ensure_round_table_exists(current_round, ctx);
-
-    self.assert_max_players(phase_info);
+    phase_info.assert_current_round_number(round.get_round_number());
+    round_registry.assert_valid_round_id(round.get_round_number(), object::id(round));
 
     let purchase_value = purchase_coin.value();
     assert!(purchase_value > 0, ErrorPurchaseAmountTooLow);
@@ -239,7 +201,7 @@ public fun purchase_ticket<T>(
     let ticket_amount = purchase_value / self.price_per_ticket;
     assert!(ticket_amount > 0, ErrorPurchaseAmountTooLow);
 
-    // Calculate exact cost for tickets
+    // Calculate exact ticket cost
     let ticket_cost = ticket_amount * self.price_per_ticket;
 
     let mut purchase_coin = purchase_coin;
@@ -260,52 +222,46 @@ public fun purchase_ticket<T>(
     let treasury_reserves = self.inner_get_treasury_reserves_balance_mut<T>();
     coin::put(treasury_reserves, purchase_coin.split(ticket_cost_after_fees, ctx));
 
-    // Check if the buyer already exists in the current round
+    // Record player tickets
     let buyer = tx_context::sender(ctx);
-    self.rounds.borrow_mut(current_round).add_player_ticket(buyer, ticket_amount);
+    round.add_player_ticket(buyer, ticket_amount);
 
     purchase_coin // Refund excess amount
 }
 
+/// Draws a winner using a random ticket number.
 entry fun draw<T>(
-    _self: &PrizePoolCap, // Enforcing the use of the PrizePoolCap
+    _self: &PrizePoolCap,
     phase_info_cap: &PhaseInfoCap,
+    prize_pool: &PrizePool,
     phase_info: &mut PhaseInfo,
-    prize_pool: &mut PrizePool,
     pool_registry: &PoolRegistry,
+    round_registry: &RoundRegistry,
+    round: &mut Round,
     rand: &Random,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     phase_info.assert_drawing_phase();
-
-    assert!(prize_pool.pool_registry.is_some(), ErrorInvalidPoolRegistry);
-    assert!(prize_pool.lounge_registry.is_some(), ErrorInvalidLoungeRegistry);
-
-    let current_round = phase_info.get_current_round();
-    prize_pool.inner_ensure_round_table_exists(current_round, ctx);
+    phase_info.assert_current_round_number(round.get_round_number());
+    round_registry.assert_valid_round_id(round.get_round_number(), object::id(round));
 
     let prize_reserves_value = prize_pool.get_total_prize_reserves_value<T>(pool_registry);
-    let lp_tickets = prize_reserves_value / prize_pool.price_per_ticket;
-    let total_fee_bps = prize_pool.lp_fee_bps + prize_pool.protocol_fee_bps;
-    let lp_tickets_with_fee = calculate_total_ticket_with_fees(
-        lp_tickets,
-        total_fee_bps,
-    );
+    let lp_ticket = prize_pool.inner_cal_lp_ticket(prize_reserves_value);
 
     let mut generator = rand.new_generator(ctx);
-    let ticket_number = generator.generate_u64_in_range(0, lp_tickets_with_fee);
-
-    let winner_player = prize_pool.inner_find_ticket_winner_address(phase_info, ticket_number);
+    let ticket_number = generator.generate_u64_in_range(0, lp_ticket+1); // make sure to cover all tickets
+    let winner_player = round.find_ticket_winner_address(ticket_number);
 
     // Store the winner in the current round
-    let round = prize_pool.rounds.borrow_mut(current_round);
     round.record_drawing_result(clock, winner_player, prize_reserves_value);
+    phase_info_cap.set_last_drawing_timestamp_ms(phase_info, clock);
 
     // Instantly move to the Distributing phase
     phase_info_cap.next(phase_info, clock, ctx);
 }
 
+/// Distributes prizes to a lounge and fees to pools.
 public fun distribute<T>(
     _self: &PrizePoolCap,
     pool_cap: &PoolCap,
@@ -315,22 +271,20 @@ public fun distribute<T>(
     prize_pool: &mut PrizePool,
     pool_registry: &mut PoolRegistry,
     lounge_registry: &mut LoungeRegistry,
+    round_registry: &RoundRegistry,
+    round: &mut Round,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     phase_info.assert_distributing_phase();
-
-    prize_pool.assert_valid_pool_registry(pool_registry);
-    prize_pool.assert_valid_longe_registry(lounge_registry);
-
-    let current_round = phase_info.get_current_round();
-    let round = prize_pool.rounds.borrow_mut(current_round);
+    phase_info.assert_current_round_number(round.get_round_number());
+    round_registry.assert_valid_round_id(round.get_round_number(), object::id(round));
 
     if (round.get_winner().is_some()) {
         let winner = round.get_winner().extract();
         let lounge_number = lounge_cap.create_lounge<T>(
             lounge_registry,
-            current_round,
+            round.get_round_number(),
             winner,
             ctx,
         );
@@ -347,18 +301,14 @@ public fun distribute<T>(
     let fee_reserves = prize_pool.inner_get_lp_fee_reserves_balance_mut<T>();
     inner_distribute_fee_to_pools<T>(pool_registry, fee_reserves, ctx);
 
-    // We create round table for the next round
-    prize_pool.inner_ensure_round_table_exists(current_round + 1, ctx);
-
     // Instantly move to the Settling phase
     phase_info_cap.next(phase_info, clock, ctx);
 }
 
-/// Internal
-///
+/// Internal functions
 
 fun inner_aggregate_prize_to_lounge<T>(
-    self: &PrizePool,
+    _self: &PrizePool,
     phase_info: &PhaseInfo,
     pool_cap: &PoolCap,
     pool_registry: &mut PoolRegistry,
@@ -366,22 +316,21 @@ fun inner_aggregate_prize_to_lounge<T>(
     lounge_number: u64,
     ctx: &mut TxContext,
 ) {
-    self.assert_valid_pool_registry(pool_registry);
-
     let risk_ratios = pool_registry.get_pool_risk_ratios();
     let risk_ratios_len = risk_ratios.length();
 
     let mut i = 0;
     while (i < risk_ratios_len) {
         let risk_ratio_bps = risk_ratios[i];
-        pool_cap.withdraw_prize<T>(
+        let prize_coin = pool_cap.withdraw_prize<T>(
             pool_registry,
             risk_ratio_bps,
             phase_info,
-            lounge_registry,
-            lounge_number,
             ctx,
         );
+
+        lounge_registry.add_reserves(lounge_number, prize_coin);
+
         i = i + 1;
     };
 }
@@ -476,49 +425,19 @@ fun inner_get_protocol_fee_amount(self: &PrizePool, purchased_value: u64): u64 {
     protocol_fee_amount
 }
 
-fun inner_ensure_round_table_exists(self: &mut PrizePool, current_round: u64, ctx: &mut TxContext) {
-    if (!self.rounds.contains(current_round)) {
-        self
-            .rounds
-            .add(
-                current_round,
-                round::new(ctx),
-            );
-    };
-}
-
-fun inner_find_ticket_winner_address(
-    prize_pool: &PrizePool,
-    phase_info: &PhaseInfo,
-    ticket_number: u64,
-): Option<address> {
-    let current_round = phase_info.get_current_round();
-    prize_pool.rounds.borrow(current_round).find_ticket_winner_address(ticket_number)
-}
-
-/// Assertions
-///
-
-fun assert_valid_pool_registry(self: &PrizePool, pool_registry: &PoolRegistry) {
-    assert!(self.pool_registry.is_some(), ErrorInvalidPoolRegistry);
-    assert!(object::id(pool_registry) == self.pool_registry.borrow(), ErrorInvalidPoolRegistry);
-}
-
-fun assert_valid_longe_registry(self: &PrizePool, lounge_registry: &LoungeRegistry) {
-    assert!(self.lounge_registry.is_some(), ErrorInvalidLoungeRegistry);
-    assert!(
-        object::id(lounge_registry) == self.lounge_registry.borrow(),
-        ErrorInvalidLoungeRegistry,
+fun inner_cal_lp_ticket(self: &PrizePool, prize_reserves_value: u64): u64 {
+    let lp_tickets = prize_reserves_value / self.price_per_ticket;
+    let total_fee_bps = self.lp_fee_bps + self.protocol_fee_bps;
+    let lp_tickets_with_fee = calculate_total_ticket_with_fees(
+        lp_tickets,
+        total_fee_bps,
     );
-}
 
-fun assert_max_players(self: &PrizePool, phase_info: &PhaseInfo) {
-    let current_round = phase_info.get_current_round();
-    let current_player_count = self.rounds.borrow(current_round).get_number_of_players();
-    assert!(current_player_count < self.max_players, ErrorMaximumNumberOfPlayersReached);
+    lp_tickets_with_fee
 }
 
 #[test_only]
 public fun init_for_testing(ctx: &mut TxContext) {
-    init(ctx);
+    let witness = PRIZE_POOL {};
+    init(witness, ctx);
 }

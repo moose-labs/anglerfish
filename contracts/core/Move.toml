@@ -14,5 +14,5 @@ local = "../libs/math"
 [addresses]
 anglerfish = "0x0"
 
-[move.toolchain-version]
-compiler-version = "1.46.2"
+# [move.toolchain-version]
+# compiler-version = "1.46.2"

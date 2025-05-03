@@ -1,12 +1,20 @@
+/// Manages prize lounges for lottery winners to claim reserves.
 module anglerfish::lounge;
 
 use sui::bag::{Self, Bag};
 use sui::balance::{Self, Balance};
 use sui::coin::{Self, Coin, from_balance};
+use sui::event::emit;
 
-const ErrorUnauthorized: u64 = 0;
-const ErrorRecipientCannotBeZero: u64 = 1;
-const ErrorNotAvailableLounge: u64 = 2;
+const ErrorNotOneTimeWitness: u64 = 1001;
+const ErrorUnauthorized: u64 = 1002;
+const ErrorRecipientZero: u64 = 1003;
+const ErrorNotAvailable: u64 = 1004;
+const ErrorEmptyReserves: u64 = 1005;
+const ErrorNotEmptyReserves: u64 = 1006;
+
+/// LOUNGE a OneTimeWitness struct
+public struct LOUNGE has drop {}
 
 public struct LoungeCap has key, store {
     id: UID,
@@ -24,40 +32,42 @@ public struct LoungeRegistry has key {
     id: UID,
     /// The table of lounges that contain the lounge id and the claimable address
     lounges: Bag,
-    /// Pool authorized creator
-    creator: ID,
 }
 
-fun init(ctx: &mut TxContext) {
+public struct LoungeCapCreated has copy, drop {
+    cap_id: ID,
+}
+
+/// Initializes LoungeRegistry and LoungeCap with OneTimeWitness.
+fun init(witness: LOUNGE, ctx: &mut TxContext) {
+    assert!(sui::types::is_one_time_witness(&witness), ErrorNotOneTimeWitness);
+
     let authority = ctx.sender();
 
     let authority_cap = LoungeCap {
         id: object::new(ctx),
     };
 
-    transfer::share_object(LoungeRegistry {
+    let lounge_registry = LoungeRegistry {
         id: object::new(ctx),
         lounges: bag::new(ctx),
-        creator: object::id(&authority_cap),
-    });
+    };
 
+    emit(LoungeCapCreated { cap_id: object::id(&authority_cap) });
+
+    transfer::share_object(lounge_registry);
     transfer::public_transfer(authority_cap, authority);
 }
 
-#[test_only]
-public fun init_for_testing(ctx: &mut TxContext) {
-    init(ctx);
-}
-
+/// Creates a Lounge for a winner to claim prizes.
 public fun create_lounge<T>(
-    self: &LoungeCap, // Enforce to use by lounge cap capability
+    _self: &LoungeCap,
     lounge_registry: &mut LoungeRegistry,
     lounge_number: u64,
     recipient: address,
     ctx: &mut TxContext,
 ): u64 {
-    assert!(object::id(self) == lounge_registry.creator, ErrorUnauthorized);
-    assert!(recipient != @0x0, ErrorRecipientCannotBeZero);
+    assert!(recipient != @0x0, ErrorRecipientZero);
 
     let lounge = Lounge<T> {
         id: object::new(ctx),
@@ -66,47 +76,72 @@ public fun create_lounge<T>(
     };
 
     lounge_registry.lounges.add(lounge_number, lounge);
-
     lounge_number
 }
 
+/// Checks if a lounge is available in the registry.
 public fun is_lounge_available(lounge_registry: &LoungeRegistry, lounge_number: u64): bool {
     lounge_registry.lounges.contains(lounge_number)
 }
 
+/// Allows the recipient to claim all reserves from a lounge.
 public fun claim<T>(self: &mut LoungeRegistry, lounge_number: u64, ctx: &mut TxContext): Coin<T> {
-    assert!(self.is_lounge_available(lounge_number), ErrorNotAvailableLounge);
+    assert!(self.is_lounge_available(lounge_number), ErrorNotAvailable);
 
-    let lounge = self.inner_get_lounge_number_mut(lounge_number);
-
+    let lounge = self.get_lounge_mut<T>(lounge_number);
     assert!(lounge.recipient == ctx.sender(), ErrorUnauthorized);
+    assert!(lounge.reserves.value() > 0, ErrorEmptyReserves);
+
     from_balance(lounge.reserves.withdraw_all(), ctx)
 }
 
+/// Adds reserves to a lounge for prize distribution.
 public fun add_reserves<T>(self: &mut LoungeRegistry, lounge_number: u64, coin: Coin<T>) {
-    assert!(self.is_lounge_available(lounge_number), ErrorNotAvailableLounge);
-
-    let lounge = self.inner_get_lounge_number_mut(lounge_number);
+    assert!(self.is_lounge_available(lounge_number), ErrorNotAvailable);
+    let lounge = self.get_lounge_mut<T>(lounge_number);
     coin::put(&mut lounge.reserves, coin);
 }
 
-public fun get_lounge_number<T>(self: &mut LoungeRegistry, lounge_number: u64): &Lounge<T> {
-    assert!(self.is_lounge_available(lounge_number), ErrorNotAvailableLounge);
+/// Deletes a completed Lounge
+public fun delete_lounge<T>(_self: &LoungeCap, self: &mut LoungeRegistry, lounge_number: u64) {
+    assert!(self.is_lounge_available(lounge_number), ErrorNotAvailable);
+
+    // Remove lounge from bag
+    let lounge: Lounge<T> = self.lounges.remove(lounge_number);
+    let Lounge { id, reserves, recipient: _ } = lounge;
+
+    // Lounge reserves must be zero
+    assert!(reserves.value() == 0, ErrorNotEmptyReserves);
+
+    // Delete objects
+    balance::destroy_zero(reserves);
+    object::delete(id);
+}
+
+/// Retrieves a lounge by number for inspection.
+public fun get_lounge<T>(self: &mut LoungeRegistry, lounge_number: u64): &Lounge<T> {
+    assert!(self.is_lounge_available(lounge_number), ErrorNotAvailable);
     self.lounges.borrow(lounge_number)
 }
 
+/// Gets the recipient address of a lounge.
 public fun get_recipient<T>(lounge: &Lounge<T>): address {
     lounge.recipient
 }
 
+/// Gets the value of reserves in a lounge.
 public fun get_prize_reserves_value<T>(lounge: &Lounge<T>): u64 {
     lounge.reserves.value()
 }
 
-// === Private functions ===
+/// Private functions
 
-fun inner_get_lounge_number_mut<T>(self: &mut LoungeRegistry, lounge_number: u64): &mut Lounge<T> {
-    assert!(self.is_lounge_available(lounge_number), ErrorNotAvailableLounge);
-    let lounge = self.lounges.borrow_mut(lounge_number);
-    lounge
+fun get_lounge_mut<T>(self: &mut LoungeRegistry, lounge_number: u64): &mut Lounge<T> {
+    self.lounges.borrow_mut(lounge_number)
+}
+
+#[test_only]
+public fun init_for_testing(ctx: &mut TxContext) {
+    let witness = LOUNGE {};
+    init(witness, ctx);
 }

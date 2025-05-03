@@ -1,18 +1,35 @@
+/// Manages lottery phase lifecycle and round tracking.
 module anglerfish::phase;
 
 use sui::clock::Clock;
+use sui::event::emit;
 
-const ErrorUninitialized: u64 = 1;
-const ErrorAlreadyInitialized: u64 = 2;
-const ErrorNotLiquidityPhase: u64 = 3;
-const ErrorNotTicketingPhase: u64 = 4;
-const ErrorNotDrawingPhase: u64 = 5;
-const ErrorNotDistributingPhase: u64 = 6;
-const ErrorNotSettlingPhase: u64 = 7;
-const ErrorCurrentPhaseNotCompleted: u64 = 8;
-const ErrorCurrentPhaseIsNotAllowedIterateFromEntry: u64 = 9;
-const ErrorDurationTooShort: u64 = 10;
+const ErrorNotOneTimeWitness: u64 = 1;
+const ErrorUninitialized: u64 = 2;
+const ErrorAlreadyInitialized: u64 = 3;
+const ErrorNotLiquidityPhase: u64 = 4;
+const ErrorNotTicketingPhase: u64 = 5;
+const ErrorNotDrawingPhase: u64 = 6;
+const ErrorNotDistributingPhase: u64 = 7;
+const ErrorNotSettlingPhase: u64 = 8;
+const ErrorCurrentPhaseNotCompleted: u64 = 9;
+const ErrorCurrentPhaseNotAllowedIterateFromEntry: u64 = 10;
+const ErrorDurationTooShort: u64 = 11;
+const ErrorInvalidRound: u64 = 12;
 
+/// PHASE a OneTimeWitness struct
+public struct PHASE has drop {}
+
+/// Capability for phase transitions.
+public struct PhaseInfoCap has key, store {
+    id: UID,
+}
+
+public struct PhaseInfoCapCreated has copy, drop {
+    cap_id: ID,
+}
+
+/// Represents the current phase of the lottery system.
 public enum Phase has copy, drop, store {
     /// The system is not yet initialized.
     Uninitialized,
@@ -28,6 +45,7 @@ public enum Phase has copy, drop, store {
     Settling,
 }
 
+/// Stores durations for timed phases.
 public struct PhaseDurations has copy, drop, store {
     /// The duration of the liquidity providing phase in seconds
     liquidity_providing_duration: u64,
@@ -35,52 +53,57 @@ public struct PhaseDurations has copy, drop, store {
     ticketing_duration: u64,
 }
 
-public struct PhaseInfoCap has key, store {
-    id: UID,
-}
-
+/// Shared object tracking the lottery’s phase state, including UI metadata.
 public struct PhaseInfo has key {
     id: UID,
     /// Represents the current epoch or round in a sequential process
-    current_round: u64,
+    current_round_number: u64,
     /// Indicates whether the liquidity pool is processing deposits, ticket sales, or drawing
     current_phase: Phase,
     /// The timestamp of the current phase in seconds
     current_phase_at: u64,
     /// The durations of each phase in seconds
     durations: PhaseDurations,
+    /// Timestamp of the last Drawing phase
+    last_drawing_timestamp_ms: u64,
 }
 
-fun init(ctx: &mut TxContext) {
+/// Initializes PhaseInfo and PhaseInfoCap with OneTimeWitness.
+fun init(witness: PHASE, ctx: &mut TxContext) {
+    assert!(sui::types::is_one_time_witness(&witness), ErrorNotOneTimeWitness);
     let authority = ctx.sender();
 
     let phase_info_cap = PhaseInfoCap {
         id: object::new(ctx),
     };
 
-    transfer::share_object(PhaseInfo {
+    let phase_info = PhaseInfo {
         id: object::new(ctx),
-        current_round: 0,
+        current_round_number: 0,
         current_phase: Phase::Uninitialized,
         current_phase_at: 0,
         durations: PhaseDurations {
             liquidity_providing_duration: 0,
             ticketing_duration: 0,
         },
-    });
+        last_drawing_timestamp_ms: 0,
+    };
 
+    emit(PhaseInfoCapCreated { cap_id: object::id(&phase_info_cap) });
+
+    transfer::share_object(phase_info);
     transfer::transfer(phase_info_cap, authority);
 }
 
+/// Initializes PhaseInfo with durations and sets Settling phase to allow prize_pool to start a new round.
 public fun initialize(
-    _self: &PhaseInfoCap, // Enforce to use by phase info cap capability
+    _self: &PhaseInfoCap,
     phase_info: &mut PhaseInfo,
     liquidity_providing_duration: u64,
     ticketing_duration: u64,
     _: &mut TxContext,
 ) {
     assert!(phase_info.current_phase == Phase::Uninitialized, ErrorAlreadyInitialized);
-
     let phase_durations = PhaseDurations {
         liquidity_providing_duration,
         ticketing_duration,
@@ -91,51 +114,69 @@ public fun initialize(
 
     // Set the initial phase to Settling
     phase_info.current_phase = Phase::Settling;
+    phase_info.current_round_number = 0;
 }
 
-/// On LiquidityProviding and Ticketing phases are allowed to call by public entry
+/// Advances phase from LiquidityProviding or Ticketing (entry point).
 public fun next_entry(
-    self: &PhaseInfoCap, // Enforce to use by phase info cap capability
+    self: &PhaseInfoCap,
     phase_info: &mut PhaseInfo,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    assert!(phase_info.is_allowed_next_from_entry(), ErrorCurrentPhaseIsNotAllowedIterateFromEntry);
+    assert!(phase_info.is_allowed_next_from_entry(), ErrorCurrentPhaseNotAllowedIterateFromEntry);
     self.next(phase_info, clock, ctx);
 }
 
+/// Advances to the next phase, updating timestamps and round numbers.
 public(package) fun next(
-    self: &PhaseInfoCap, // Enforce to use by phase info cap capability
+    self: &PhaseInfoCap,
     phase_info: &mut PhaseInfo,
     clock: &Clock,
     _: &mut TxContext,
 ) {
     assert_initialized(phase_info);
-
     assert!(phase_info.is_current_phase_completed(clock), ErrorCurrentPhaseNotCompleted);
 
-    phase_info.current_phase = phase_info.inner_next_phase();
+    phase_info.current_phase = phase_info.next_phase();
     phase_info.current_phase_at = clock.timestamp_ms();
 
-    self.inner_bump_round(phase_info);
+    self.bump_round(phase_info);
 }
 
-// ==== Public views ====
+public(package) fun set_last_drawing_timestamp_ms(
+    _self: &PhaseInfoCap,
+    phase_info: &mut PhaseInfo,
+    clock: &Clock,
+) {
+    phase_info.assert_drawing_phase();
+    phase_info.last_drawing_timestamp_ms = clock.timestamp_ms();
+}
+
+/// Public views
 
 public fun is_initialized(self: &PhaseInfo): bool {
     self.current_phase != Phase::Uninitialized
 }
 
+// Gets to current phase of the platform
 public fun get_current_phase(self: &PhaseInfo): Phase {
     self.current_phase
 }
 
-public fun get_current_round(self: &PhaseInfo): u64 {
-    self.current_round
+/// Gets the current epoch or round in a sequential process
+public fun get_current_round_number(self: &PhaseInfo): u64 {
+    self.current_round_number
 }
 
+/// Gets the timestamp of the current phase in seconds.
 public fun get_current_phase_at(self: &PhaseInfo): u64 {
     self.current_phase_at
+}
+
+/// Gets the timestamp of the last Drawing phase.
+public fun get_last_drawing_timestamp_ms(self: &PhaseInfo): u64 {
+    self.last_drawing_timestamp_ms
 }
 
 public fun is_current_phase_completed(self: &PhaseInfo, clock: &Clock): bool {
@@ -143,7 +184,7 @@ public fun is_current_phase_completed(self: &PhaseInfo, clock: &Clock): bool {
     match (self.current_phase) {
         Phase::Uninitialized => false,
         Phase::LiquidityProviding => current_timestamp_ms >= self.estimate_current_phase_completed_at(),
-        Phase::Ticketing => current_timestamp_ms >=  self.estimate_current_phase_completed_at(),
+        Phase::Ticketing => current_timestamp_ms >= self.estimate_current_phase_completed_at(),
         Phase::Drawing => true,
         Phase::Distributing => true,
         Phase::Settling => true,
@@ -157,7 +198,7 @@ public fun is_allowed_next_from_entry(self: &PhaseInfo): bool {
         Phase::Ticketing => true,
         Phase::Drawing => false, // triggered by prize_pool::draw
         Phase::Distributing => false, // triggered by prize_pool::distribute
-        Phase::Settling => true,
+        Phase::Settling => false, // triggered by prize_pool::start_next_round
     }
 }
 
@@ -174,15 +215,15 @@ public fun estimate_current_phase_completed_at(self: &PhaseInfo): u64 {
     }
 }
 
-/// Internal
+/// Private functions
 
-fun inner_bump_round(_self: &PhaseInfoCap, phase_info: &mut PhaseInfo) {
+fun bump_round(_self: &PhaseInfoCap, phase_info: &mut PhaseInfo) {
     if (phase_info.current_phase == Phase::LiquidityProviding) {
-        phase_info.current_round = phase_info.current_round + 1;
+        phase_info.current_round_number = phase_info.current_round_number + 1;
     }
 }
 
-fun inner_next_phase(self: &PhaseInfo): Phase {
+fun next_phase(self: &PhaseInfo): Phase {
     match (self.current_phase) {
         Phase::Uninitialized => Phase::Uninitialized,
         Phase::LiquidityProviding => Phase::Ticketing,
@@ -227,7 +268,11 @@ public fun assert_settling_phase(self: &PhaseInfo) {
     assert!(self.current_phase == Phase::Settling, ErrorNotSettlingPhase);
 }
 
+public fun assert_current_round_number(self: &PhaseInfo, round_number: u64) {
+    assert!(self.current_round_number == round_number, ErrorInvalidRound);
+}
+
 #[test_only]
 public fun init_for_testing(ctx: &mut TxContext) {
-    init(ctx);
+    init(PHASE {}, ctx);
 }

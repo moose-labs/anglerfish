@@ -1,23 +1,26 @@
-module anglerfish::ticket_calculator {
-    use math::u64::mul_div;
+/// Calculates ticket amounts with fees for the lottery system.
+module anglerfish::ticket_calculator;
 
-    public(package) fun calculate_total_ticket_with_fees(
-        lp_tickets: u64,
-        total_fees_bps: u64,
-    ): u64 {
-        let lp_deducted_fees = (10000 - total_fees_bps);
-        let w = mul_div(lp_tickets, 10000, lp_deducted_fees);
-        w
-    }
+const ErrorInvalidFees: u64 = 2001;
+
+/// Basis points denominator (10000 = 100%).
+const BPS_DENOMINATOR: u64 = 10000;
+
+/// Calculates the total ticket amount including fees based on basis points.
+public(package) fun calculate_total_ticket_with_fees(ticket_amount: u64, total_fees_bps: u64): u64 {
+    assert!(total_fees_bps < BPS_DENOMINATOR, ErrorInvalidFees);
+    let denominator = BPS_DENOMINATOR - total_fees_bps;
+    ticket_amount * BPS_DENOMINATOR / denominator
 }
 
-#[test_only]
-module anglerfish::ticket_calculator_test {
-    use anglerfish::ticket_calculator::calculate_total_ticket_with_fees;
+#[test]
+fun test_edge_cases() {
+    assert!(calculate_total_ticket_with_fees(0, 3000) == 0);
+    assert!(calculate_total_ticket_with_fees(100, 0) == 100);
+    assert!(calculate_total_ticket_with_fees(100, 9999) == 1000000);
+}
 
-    #[test]
-    public fun test_calculate_total_ticket_with_fees() {
-        assert!(calculate_total_ticket_with_fees(100, 3000) == 142);
-        assert!(calculate_total_ticket_with_fees(100_000_000_000, 3000) == 142857142857);
-    }
+#[test, expected_failure(abort_code = ErrorInvalidFees)]
+fun test_invalid_fees() {
+    calculate_total_ticket_with_fees(100, 10000);
 }
