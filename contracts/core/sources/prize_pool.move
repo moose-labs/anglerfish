@@ -185,6 +185,7 @@ public fun get_protocol_fee_reserves_value<T>(self: &PrizePool): u64 {
 /// Purchases tickets, allocating fees and adding tickets to the round.
 public fun purchase_ticket<T>(
     self: &mut PrizePool,
+    round_registry: &RoundRegistry,
     round: &mut Round,
     phase_info: &PhaseInfo,
     purchase_coin: Coin<T>,
@@ -192,6 +193,7 @@ public fun purchase_ticket<T>(
 ): Coin<T> {
     phase_info.assert_ticketing_phase();
     phase_info.assert_current_round_number(round.get_round_number());
+    round_registry.assert_valid_round_id(round.get_round_number(), object::id(round));
 
     let purchase_value = purchase_coin.value();
     assert!(purchase_value > 0, ErrorPurchaseAmountTooLow);
@@ -269,15 +271,16 @@ public fun distribute<T>(
     prize_pool: &mut PrizePool,
     pool_registry: &mut PoolRegistry,
     lounge_registry: &mut LoungeRegistry,
+    round_registry: &RoundRegistry,
     round: &mut Round,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     phase_info.assert_distributing_phase();
     phase_info.assert_current_round_number(round.get_round_number());
+    round_registry.assert_valid_round_id(round.get_round_number(), object::id(round));
 
-    let prize_reserves_value = prize_pool.get_total_prize_reserves_value<T>(pool_registry);
-    if (round.get_winner().is_some() && prize_reserves_value > 0) {
+    if (round.get_winner().is_some()) {
         let winner = round.get_winner().extract();
         let lounge_number = lounge_cap.create_lounge<T>(
             lounge_registry,

@@ -133,7 +133,7 @@ fun test_cannot_initialize_twice() {
 // can instantly change phase on drawed phase (Drawing -> Settling)
 
 #[test]
-#[expected_failure(abort_code = phase::ErrorCurrentPhaseIsNotAllowedIterateFromEntry)]
+#[expected_failure(abort_code = phase::ErrorCurrentPhaseNotAllowedIterateFromEntry)]
 fun test_change_phase_until_no_entry() {
     let (mut scenario, mut clock) = build_base_test_suite(AUTHORITY);
 
@@ -144,7 +144,7 @@ fun test_change_phase_until_no_entry() {
 
         phase_info_cap.initialize(&mut phase_info, DURATION, DURATION, scenario.ctx());
         phase_info.assert_settling_phase();
-        assert!(phase_info.get_current_round() == 0);
+        assert!(phase_info.get_current_round_number() == 0);
         assert!(phase_info.is_current_phase_completed(&clock));
 
         // can change phase (Settling -> LiquidityProviding)
@@ -152,7 +152,7 @@ fun test_change_phase_until_no_entry() {
         phase_info.assert_liquidity_providing_phase();
 
         // should bump round on liquidity providing phase
-        assert!(phase_info.get_current_round() == 1);
+        assert!(phase_info.get_current_round_number() == 1);
 
         // cannot change a phase that hasn't come yet. (LiquidityProviding -> Ticketing)
         assert!(phase_info.is_current_phase_completed(&clock) == false);
@@ -163,7 +163,7 @@ fun test_change_phase_until_no_entry() {
         // can change phase (LiquidityProviding -> Ticketing)
         phase_info_cap.next_entry(&mut phase_info, &clock, scenario.ctx());
         phase_info.assert_ticketing_phase();
-        assert!(phase_info.get_current_round() == 1);
+        assert!(phase_info.get_current_round_number() == 1);
 
         // cannot change a phase that hasn't come yet. (Ticketing -> Drawing)
         assert!(!phase_info.is_current_phase_completed(&clock));
@@ -174,7 +174,7 @@ fun test_change_phase_until_no_entry() {
         // can change phase (Ticketing -> Drawing)
         phase_info_cap.next_entry(&mut phase_info, &clock, scenario.ctx());
         phase_info.assert_drawing_phase();
-        assert!(phase_info.get_current_round() == 1);
+        assert!(phase_info.get_current_round_number() == 1);
 
         // This should revert with ErrorCurrentPhaseIsNotAllowedIterateFromEntry
         // can instantly change phase on drawed phase (Drawing -> Distributing)

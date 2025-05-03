@@ -271,7 +271,7 @@ public(package) fun withdraw_prize<T>(
     let pool = get_pool_by_risk_ratio_mut<T>(pool_registry, risk_ratio_bps);
 
     let prize_reserves_amount = pool.get_prize_reserves_value();
-    assert!(prize_reserves_amount > 0, ErrorInsufficientReserves);
+
     let prize_coin = pool.inner_take_reserves_balance(prize_reserves_amount, ctx);
 
     prize_coin

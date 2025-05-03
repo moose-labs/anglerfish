@@ -220,7 +220,10 @@ public fun get_number_of_players(self: &Round): u64 {
 
 /// Gets the total tickets purchased by a player for UI display.
 public fun get_player_tickets(self: &Round, player: address): u64 {
-    assert!(self.players.contains(player), ErrorPlayerNotFound);
+    if (!self.players.contains(player)) {
+        return 0
+    };
+
     let player_purchases = self.players.borrow(player);
     let mut total_tickets = 0;
     let mut i = 0;

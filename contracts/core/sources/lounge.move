@@ -119,7 +119,7 @@ public fun delete_lounge<T>(_self: &LoungeCap, self: &mut LoungeRegistry, lounge
 }
 
 /// Retrieves a lounge by number for inspection.
-public fun get_lounge_number<T>(self: &mut LoungeRegistry, lounge_number: u64): &Lounge<T> {
+public fun get_lounge<T>(self: &mut LoungeRegistry, lounge_number: u64): &Lounge<T> {
     assert!(self.is_lounge_available(lounge_number), ErrorNotAvailable);
     self.lounges.borrow(lounge_number)
 }

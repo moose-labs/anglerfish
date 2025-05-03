@@ -543,6 +543,7 @@ fun test_purchase_ticket() {
     let coin = coin::mint_for_testing<TEST_COIN>(3000, ts::ctx(&mut scenario));
     let remaining_coin = prize_pool::purchase_ticket<TEST_COIN>(
         &mut prize_pool,
+        &round_registry,
         &mut round,
         &phase_info,
         coin,
@@ -602,6 +603,7 @@ fun test_purchase_ticket_zero() {
     let coin = coin::mint_for_testing<TEST_COIN>(0, ts::ctx(&mut scenario));
     let change_coin = prize_pool::purchase_ticket<TEST_COIN>(
         &mut prize_pool,
+        &round_registry,
         &mut round,
         &phase_info,
         coin,
@@ -679,6 +681,7 @@ fun test_full_lottery_cycle() {
     let purchase_coin = coin::mint_for_testing<TEST_COIN>(3000, ts::ctx(&mut scenario));
     let change_coin = prize_pool::purchase_ticket<TEST_COIN>(
         &mut prize_pool,
+        &round_registry,
         &mut round,
         &phase_info,
         purchase_coin,
@@ -723,6 +726,7 @@ fun test_full_lottery_cycle() {
         &mut prize_pool,
         &mut pool_registry,
         &mut lounge_registry,
+        &round_registry,
         &mut round,
         &clock,
         ts::ctx(&mut scenario),
