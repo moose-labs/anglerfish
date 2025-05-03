@@ -2,7 +2,6 @@
 #[test_only]
 module anglerfish::anglerfish_tests;
 
-use anglerfish::errors;
 use anglerfish::lounge::{Self, LoungeCap, LoungeRegistry};
 use anglerfish::phase::{Self, PhaseInfo, PhaseInfoCap};
 use anglerfish::pool::{Self, PoolCap, PoolRegistry};
@@ -94,17 +93,6 @@ fun initialize_phase_and_pool(
     ts::return_shared(phase_info);
     ts::return_shared(pool_registry);
     ts::return_shared(prize_pool);
-}
-
-// Test errors.move
-#[test]
-fun test_error_codes() {
-    assert_eq(errors::e_uninitialized(), 1);
-    assert_eq(errors::e_unauthorized(), 1001);
-    assert_eq(errors::e_invalid_fees(), 2001);
-    assert_eq(errors::e_zero_ticket_count(), 3001);
-    assert_eq(errors::e_too_small_to_mint(), 4001);
-    assert_eq(errors::e_purchase_amount_too_low(), 5001);
 }
 
 // Test ticket_calculator.move

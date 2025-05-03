@@ -7,9 +7,8 @@ use sui::table::{Self, Table};
 
 const ENotOneTimeWitness: u64 = 3001;
 const ErrorZeroTicketCount: u64 = 3002;
-const ErrorPlayerNotFound: u64 = 3003;
-const ErrorInvalidRoundNumber: u64 = 3004;
-const ErrorPlayerZero: u64 = 3005;
+const ErrorInvalidRoundNumber: u64 = 3003;
+const ErrorPlayerZero: u64 = 3004;
 
 /// ROUND a OneTimeWitness struct
 public struct ROUND has drop {}
