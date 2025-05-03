@@ -1,7 +1,6 @@
 /// Manages liquidity pools with varying risk ratios for lottery reserves.
 module anglerfish::pool;
 
-use anglerfish::errors;
 use anglerfish::phase::PhaseInfo;
 use math::u64::mul_div;
 use sui::bag::{Self, Bag};
@@ -12,6 +11,16 @@ use sui::table::{Self, Table};
 use sui::vec_map::{Self, VecMap};
 
 const MAX_RISK_RATIO_BPS: u64 = 10000;
+
+const ErrorNotOneTimeWitness: u64 = 4001;
+const ErrorTooSmallToMint: u64 = 4002;
+const ErrorTooLargeToRedeem: u64 = 4003;
+const ErrorInsufficientShares: u64 = 4004;
+const ErrorInsufficientReserves: u64 = 4005;
+const ErrorPoolRiskRatioTooHigh: u64 = 4006;
+const ErrorPoolDepositDisabled: u64 = 4007;
+const ErrorPoolAlreadyCreated: u64 = 4008;
+const ErrorZeroRedeemValue: u64 = 4009;
 
 /// POOL a OneTimeWitness struct
 public struct POOL has drop {}
@@ -52,7 +61,7 @@ public struct Pool<phantom T> has key, store {
 
 /// Initializes PoolRegistry and PoolCap with OneTimeWitness.
 fun init(witness: POOL, ctx: &mut TxContext) {
-    assert!(sui::types::is_one_time_witness(&witness), errors::e_not_one_time_witness());
+    assert!(sui::types::is_one_time_witness(&witness), ErrorNotOneTimeWitness);
 
     let authority = ctx.sender();
 
@@ -80,10 +89,10 @@ public fun create_pool<T>(
     risk_ratio_bps: u64,
     ctx: &mut TxContext,
 ) {
-    assert!(risk_ratio_bps <= MAX_RISK_RATIO_BPS, errors::e_pool_risk_ratio_too_high());
+    assert!(risk_ratio_bps <= MAX_RISK_RATIO_BPS, ErrorPoolRiskRatioTooHigh);
     assert!(
         pool_registry.pool_ids.contains(&risk_ratio_bps) == false,
-        errors::e_pool_already_created(),
+        ErrorPoolAlreadyCreated,
     );
     phase_info.assert_settling_phase();
 
@@ -201,7 +210,7 @@ public fun deposit<T>(
 
     // calculate share to mint
     let shares_to_mint = pool.coins_to_shares(deposit_amount);
-    assert!(shares_to_mint > 0, errors::e_too_small_to_mint());
+    assert!(shares_to_mint > 0, ErrorTooSmallToMint);
 
     // update pool shares
     pool.inner_update_shares_for_deposit(depositor, shares_to_mint);
@@ -225,12 +234,12 @@ public fun redeem<T>(
     let redeemer = tx_context::sender(ctx);
     let user_shares_amount = pool.get_user_shares(redeemer);
 
-    assert!(redeem_shares_amount > 0, errors::e_insufficient_shares());
-    assert!(redeem_shares_amount <= user_shares_amount, errors::e_too_large_to_redeem());
+    assert!(redeem_shares_amount > 0, ErrorInsufficientShares);
+    assert!(redeem_shares_amount <= user_shares_amount, ErrorTooLargeToRedeem);
 
     // Calculate redemption value before updating reserve value
     let redeem_value = pool.shares_to_coins(redeem_shares_amount);
-    assert!(redeem_value > 0, errors::e_zero_redeem_value());
+    assert!(redeem_value > 0, ErrorZeroRedeemValue);
 
     // update pool reserves
     pool.inner_update_shares_for_redemption(redeemer, redeem_shares_amount);
@@ -265,7 +274,7 @@ public(package) fun withdraw_prize<T>(
     let pool = get_pool_by_risk_ratio_mut<T>(pool_registry, risk_ratio_bps);
 
     let prize_reserves_amount = pool.get_prize_reserves_value();
-    assert!(prize_reserves_amount > 0, errors::e_insufficient_reserves());
+    assert!(prize_reserves_amount > 0, ErrorInsufficientReserves);
     let prize_coin = pool.inner_take_reserves_balance(prize_reserves_amount, ctx);
 
     prize_coin
@@ -330,7 +339,7 @@ fun inner_put_reserves_balance<T>(self: &mut Pool<T>, coin: Coin<T>) {
 }
 
 fun inner_take_reserves_balance<T>(self: &mut Pool<T>, amount: u64, ctx: &mut TxContext): Coin<T> {
-    assert!(amount <= self.reserves.value(), errors::e_insufficient_reserves());
+    assert!(amount <= self.reserves.value(), ErrorInsufficientReserves);
     self.total_reserves_value = self.total_reserves_value - amount;
     let coin = from_balance(self.reserves.split(amount), ctx);
     coin
@@ -369,7 +378,7 @@ public fun inner_update_shares_for_deposit<T>(
 /// Assertions
 
 public fun assert_deposit_enabled<T>(self: &Pool<T>) {
-    assert!(self.is_deposit_enabled, errors::e_pool_deposit_disabled());
+    assert!(self.is_deposit_enabled, ErrorPoolDepositDisabled);
 }
 
 /// Test functions

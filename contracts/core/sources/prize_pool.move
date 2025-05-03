@@ -1,7 +1,6 @@
 /// Manages lottery ticket purchases, prize draws, and distributions.
 module anglerfish::prize_pool;
 
-use anglerfish::errors;
 use anglerfish::lounge::{LoungeCap, LoungeRegistry};
 use anglerfish::phase::{PhaseInfo, PhaseInfoCap};
 use anglerfish::pool::{PoolRegistry, PoolCap};
@@ -13,6 +12,13 @@ use sui::clock::Clock;
 use sui::coin::{Self, Coin, from_balance};
 use sui::event::emit;
 use sui::random::{Random, new_generator};
+
+const ErrorNotOneTimeWitness: u64 = 5001;
+const ErrorPurchaseAmountTooLow: u64 = 5002;
+const ErrorLpFeeAmountTooHigh: u64 = 5003;
+const ErrorProtocolFeeAmountTooHigh: u64 = 5004;
+const ErrorExcessiveFeeCharged: u64 = 5005;
+const ErrorInvalidRoundNumberSequence: u64 = 5006;
 
 const TREASURY_RESERVES_KEY: vector<u8> = b"treasury_reserves";
 const LP_FEE_RESERVES_KEY: vector<u8> = b"lp_fee_reserves";
@@ -46,7 +52,7 @@ public struct PrizePool has key {
 
 /// Initializes PrizePool and PrizePoolCap with OneTimeWitness.
 fun init(witness: PRIZE_POOL, ctx: &mut TxContext) {
-    assert!(sui::types::is_one_time_witness(&witness), errors::e_not_one_time_witness());
+    assert!(sui::types::is_one_time_witness(&witness), ErrorNotOneTimeWitness);
 
     let authority = ctx.sender();
 
@@ -79,7 +85,7 @@ public fun set_price_per_ticket(
 
 /// Sets the liquidity provider fee in basis points.
 public fun set_lp_fee_bps(_self: &PrizePoolCap, prize_pool: &mut PrizePool, lp_fee_bps: u64) {
-    assert!(lp_fee_bps < 6000, errors::e_lp_fee_amount_too_high());
+    assert!(lp_fee_bps < 6000, ErrorLpFeeAmountTooHigh);
     prize_pool.lp_fee_bps = lp_fee_bps;
 }
 
@@ -89,7 +95,7 @@ public fun set_protocol_fee_bps(
     prize_pool: &mut PrizePool,
     protocol_fee_bps: u64,
 ) {
-    assert!(protocol_fee_bps < 3000, errors::e_protocol_fee_amount_too_high());
+    assert!(protocol_fee_bps < 3000, ErrorProtocolFeeAmountTooHigh);
     prize_pool.protocol_fee_bps = protocol_fee_bps;
 }
 
@@ -116,7 +122,7 @@ public fun start_new_round(
     // Capability for authorized PrizePool operations.
     assert!(
         current_round_number == prev_round_number + 1,
-        errors::e_invalid_round_number_sequence(),
+        ErrorInvalidRoundNumberSequence,
     );
 
     // Create a new round in RoundRegistry
@@ -191,10 +197,10 @@ public fun purchase_ticket<T>(
     phase_info.assert_current_round_number(round.get_round_number());
 
     let purchase_value = purchase_coin.value();
-    assert!(purchase_value > 0, errors::e_purchase_amount_too_low());
+    assert!(purchase_value > 0, ErrorPurchaseAmountTooLow);
 
     let ticket_amount = purchase_value / self.price_per_ticket;
-    assert!(ticket_amount > 0, errors::e_purchase_amount_too_low());
+    assert!(ticket_amount > 0,  ErrorPurchaseAmountTooLow);
 
     // Calculate exact ticket cost
     let ticket_cost = ticket_amount * self.price_per_ticket;
@@ -212,7 +218,7 @@ public fun purchase_ticket<T>(
     coin::put(protocol_fee_reserves, purchase_coin.split(protocol_fee_amount, ctx));
 
     // Transfer ticket coin to treasury reserves
-    assert!(ticket_cost > lp_fee_amount + protocol_fee_amount, errors::e_excessive_fee_charged());
+    assert!(ticket_cost > lp_fee_amount + protocol_fee_amount, ErrorExcessiveFeeCharged);
     let ticket_cost_after_fees = ticket_cost - lp_fee_amount - protocol_fee_amount;
     let treasury_reserves = self.inner_get_treasury_reserves_balance_mut<T>();
     coin::put(treasury_reserves, purchase_coin.split(ticket_cost_after_fees, ctx));
@@ -249,9 +255,8 @@ entry fun draw<T>(
     let winner_player = round.find_ticket_winner_address(ticket_number);
 
     // Store the winner in the current round
-    let draw_timestamp = clock.timestamp_ms();
-    round.record_drawing_result(draw_timestamp, winner_player, prize_reserves_value);
-    phase_info_cap.set_last_drawing_timestamp_ms(phase_info,draw_timestamp);
+    round.record_drawing_result(clock, winner_player, prize_reserves_value);
+    phase_info_cap.set_last_drawing_timestamp_ms(phase_info,clock);
 
     // Instantly move to the Distributing phase
     phase_info_cap.next(phase_info, clock, ctx);

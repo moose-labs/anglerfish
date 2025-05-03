@@ -1,9 +1,15 @@
 /// Manages lottery rounds, ticket purchases, and winner selection.
 module anglerfish::round;
 
-use anglerfish::errors;
 use sui::event::emit;
 use sui::table::{Self, Table};
+use sui::clock::Clock;
+
+const ENotOneTimeWitness: u64 = 3001;
+const ErrorZeroTicketCount: u64 = 3002;
+const ErrorPlayerNotFound: u64 = 3003;
+const ErrorInvalidRoundNumber: u64 = 3004;
+const ErrorPlayerZero: u64 = 3005;
 
 /// ROUND a OneTimeWitness struct
 public struct ROUND has drop {}
@@ -47,7 +53,7 @@ public struct Round has key {
 
 /// Initializes RoundRegistry and RoundRegistryCap with OneTimeWitness.
 fun init(witness: ROUND, ctx: &mut TxContext) {
-    assert!(sui::types::is_one_time_witness(&witness), errors::e_not_one_time_witness());
+    assert!(sui::types::is_one_time_witness(&witness), ENotOneTimeWitness);
 
     let authority = ctx.sender();
 
@@ -115,15 +121,15 @@ public fun delete_round(
 ) {
     let round_id = round_registry.rounds.remove(round.get_round_number());
 
-    assert!(round_id == object::id(round), errors::e_invalid_round());
+    assert!(round_id == object::id(round), ErrorInvalidRoundNumber);
 
     // TODO: Cannot delete shared Round; mark as inactive if needed
 }
 
 /// Adds a player's ticket purchase, updating total_tickets and players table.
 public(package) fun add_player_ticket(self: &mut Round, player: address, ticket_count: u64) {
-    assert!(ticket_count > 0, errors::e_zero_ticket_count());
-    assert!(player != @0x0, errors::e_player_zero());
+    assert!(ticket_count > 0, ErrorZeroTicketCount);
+    assert!(player != @0x0, ErrorPlayerZero);
 
     let start_index = self.total_tickets;
     self.total_tickets = self.total_tickets + ticket_count;
@@ -168,13 +174,13 @@ public(package) fun find_ticket_winner_address(self: &Round, ticket_number: u64)
 /// Records the drawing result, including winner, prize amount, and timestamp.
 public(package) fun record_drawing_result(
     self: &mut Round,
-    draw_timestamp: u64,
+    clock: &Clock,
     winner: Option<address>,
     prize_amount: u64,
 ) {
     self.winner = winner;
     self.prize_amount = prize_amount;
-    self.drawing_timestamp_ms = draw_timestamp;
+    self.drawing_timestamp_ms = clock.timestamp_ms();
 }
 
 /// Checks if a player participated in the round.
@@ -214,7 +220,7 @@ public fun get_number_of_players(self: &Round): u64 {
 
 /// Gets the total tickets purchased by a player for UI display.
 public fun get_player_tickets(self: &Round, player: address): u64 {
-    assert!(self.players.contains(player), errors::e_player_not_found());
+    assert!(self.players.contains(player), ErrorPlayerNotFound);
     let player_purchases = self.players.borrow(player);
     let mut total_tickets = 0;
     let mut i = 0;
@@ -233,8 +239,8 @@ public fun get_player_tickets(self: &Round, player: address): u64 {
 /// Asserts that the round ID matches the round number in the registry.
 public fun assert_valid_round_id(round_registry: &RoundRegistry, round_number: u64, round_id: ID) {
     let opt_round_id = round_registry.get_round_id(round_number);
-    assert!(opt_round_id.is_some(), errors::e_invalid_round_number());
-    assert!(opt_round_id.borrow() == round_id, errors::e_invalid_round_number());
+    assert!(opt_round_id.is_some(), ErrorInvalidRoundNumber);
+    assert!(opt_round_id.borrow() == round_id, ErrorInvalidRoundNumber);
 }
 
 #[test_only]

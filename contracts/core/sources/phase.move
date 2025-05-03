@@ -1,9 +1,22 @@
 /// Manages lottery phase lifecycle and round tracking.
 module anglerfish::phase;
 
-use anglerfish::errors;
 use sui::clock::Clock;
 use sui::event::emit;
+
+const ErrorNotOneTimeWitness: u64 = 1;
+const ErrorUninitialized: u64 = 2;
+const ErrorAlreadyInitialized: u64 = 3;
+const ErrorNotLiquidityPhase: u64 = 4;
+const ErrorNotTicketingPhase: u64 = 5;
+const ErrorNotDrawingPhase: u64 = 6;
+const ErrorNotDistributingPhase: u64 = 7;
+const ErrorNotSettlingPhase: u64 = 8;
+const ErrorCurrentPhaseNotCompleted: u64 = 9;
+const ErrorCurrentPhaseNotAllowedIterateFromEntry: u64 = 10;
+const ErrorDurationTooShort: u64 = 11;
+const ErrorInvalidRound: u64 = 12;
+
 
 /// PHASE a OneTimeWitness struct
 public struct PHASE has drop {}
@@ -58,7 +71,7 @@ public struct PhaseInfo has key {
 
 /// Initializes PhaseInfo and PhaseInfoCap with OneTimeWitness.
 fun init(witness: PHASE, ctx: &mut TxContext) {
-    assert!(sui::types::is_one_time_witness(&witness), errors::e_not_one_time_witness());
+    assert!(sui::types::is_one_time_witness(&witness), ErrorNotOneTimeWitness);
     let authority = ctx.sender();
 
     let phase_info_cap = PhaseInfoCap {
@@ -91,7 +104,7 @@ public fun initialize(
     ticketing_duration: u64,
     _: &mut TxContext,
 ) {
-    assert!(phase_info.current_phase == Phase::Uninitialized, errors::e_already_initialized());
+    assert!(phase_info.current_phase == Phase::Uninitialized, ErrorAlreadyInitialized);
     let phase_durations = PhaseDurations {
         liquidity_providing_duration,
         ticketing_duration,
@@ -114,7 +127,7 @@ public fun next_entry(
 ) {
     assert!(
         phase_info.is_allowed_next_from_entry(),
-        errors::e_current_phase_not_allowed_iterate_from_entry(),
+        ErrorCurrentPhaseNotAllowedIterateFromEntry,
     );
     self.next(phase_info, clock, ctx);
 }
@@ -127,7 +140,7 @@ public(package) fun next(
     _: &mut TxContext,
 ) {
     assert_initialized(phase_info);
-    assert!(phase_info.is_current_phase_completed(clock), errors::e_current_phase_not_completed());
+    assert!(phase_info.is_current_phase_completed(clock), ErrorCurrentPhaseNotCompleted);
 
     phase_info.current_phase = phase_info.next_phase();
     phase_info.current_phase_at = clock.timestamp_ms();
@@ -138,10 +151,10 @@ public(package) fun next(
 public(package) fun set_last_drawing_timestamp_ms(
     _self: &PhaseInfoCap,
     phase_info: &mut PhaseInfo,
-    draw_timestamp: u64,
+    clock: &Clock,
 ) {
     phase_info.assert_drawing_phase();
-    phase_info.last_drawing_timestamp_ms = draw_timestamp;
+    phase_info.last_drawing_timestamp_ms = clock.timestamp_ms();
 }
 
 /// Public views
@@ -228,39 +241,39 @@ fun next_phase(self: &PhaseInfo): Phase {
 /// Assertions
 
 fun assert_durations(self: &PhaseDurations) {
-    assert!(self.liquidity_providing_duration > 0, errors::e_duration_too_short());
-    assert!(self.ticketing_duration > 0, errors::e_duration_too_short());
+    assert!(self.liquidity_providing_duration > 0, ErrorDurationTooShort);
+    assert!(self.ticketing_duration > 0, ErrorDurationTooShort);
 }
 
 /// Check the current phase of the liquidity pool
 /// and whether the phase info object is initialized.
 
 public fun assert_initialized(self: &PhaseInfo) {
-    assert!(self.is_initialized(), errors::e_uninitialized());
+    assert!(self.is_initialized(), ErrorUninitialized);
 }
 
 public fun assert_liquidity_providing_phase(self: &PhaseInfo) {
-    assert!(self.current_phase == Phase::LiquidityProviding, errors::e_not_liquidity_phase());
+    assert!(self.current_phase == Phase::LiquidityProviding, ErrorNotLiquidityPhase);
 }
 
 public fun assert_ticketing_phase(self: &PhaseInfo) {
-    assert!(self.current_phase == Phase::Ticketing, errors::e_not_ticketing_phase());
+    assert!(self.current_phase == Phase::Ticketing, ErrorNotTicketingPhase);
 }
 
 public fun assert_drawing_phase(self: &PhaseInfo) {
-    assert!(self.current_phase == Phase::Drawing, errors::e_not_drawing_phase());
+    assert!(self.current_phase == Phase::Drawing, ErrorNotDrawingPhase);
 }
 
 public fun assert_distributing_phase(self: &PhaseInfo) {
-    assert!(self.current_phase == Phase::Distributing, errors::e_not_distributing_phase());
+    assert!(self.current_phase == Phase::Distributing, ErrorNotDistributingPhase);
 }
 
 public fun assert_settling_phase(self: &PhaseInfo) {
-    assert!(self.current_phase == Phase::Settling, errors::e_not_settling_phase());
+    assert!(self.current_phase == Phase::Settling, ErrorNotSettlingPhase);
 }
 
 public fun assert_current_round_number(self: &PhaseInfo, round_number: u64) {
-    assert!(self.current_round_number == round_number, errors::e_invalid_round());
+    assert!(self.current_round_number == round_number, ErrorInvalidRound);
 }
 
 #[test_only]
