@@ -12,6 +12,7 @@ use sui::vec_map::{Self, VecMap};
 
 const MAX_RISK_RATIO_BPS: u64 = 10000;
 
+// Error codes
 const ErrorNotOneTimeWitness: u64 = 4001;
 const ErrorTooSmallToMint: u64 = 4002;
 const ErrorTooLargeToRedeem: u64 = 4003;

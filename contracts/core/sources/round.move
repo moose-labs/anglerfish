@@ -5,6 +5,7 @@ use sui::clock::Clock;
 use sui::event::emit;
 use sui::table::{Self, Table};
 
+// Error codes
 const ENotOneTimeWitness: u64 = 3001;
 const ErrorZeroTicketCount: u64 = 3002;
 const ErrorInvalidRoundNumber: u64 = 3003;
@@ -48,6 +49,8 @@ public struct Round has key {
     prize_amount: u64,
     /// The timestamp of drawing the winner
     drawing_timestamp_ms: u64,
+    // Active or not
+    is_active: bool,
 }
 
 /// Initializes RoundRegistry and RoundRegistryCap with OneTimeWitness.
@@ -106,6 +109,7 @@ public(package) fun new(round_number: u64, ctx: &mut TxContext): ID {
         winner: option::none(),
         prize_amount: 0,
         drawing_timestamp_ms: 0,
+        is_active: true,
     };
 
     let round_id = object::id(&round);
@@ -122,7 +126,7 @@ public fun delete_round(
 
     assert!(round_id == object::id(round), ErrorInvalidRoundNumber);
 
-    // TODO: Cannot delete shared Round; mark as inactive if needed
+    round.is_active = false;
 }
 
 /// Adds a player's ticket purchase, updating total_tickets and players table.
@@ -239,10 +243,10 @@ public fun get_player_tickets(self: &Round, player: address): u64 {
 }
 
 /// Asserts that the round ID matches the round number in the registry.
-public fun assert_valid_round_id(round_registry: &RoundRegistry, round_number: u64, round_id: ID) {
-    let opt_round_id = round_registry.get_round_id(round_number);
+public fun assert_round(round_registry: &RoundRegistry, round: &Round) {
+    let opt_round_id = round_registry.get_round_id(round.get_round_number());
     assert!(opt_round_id.is_some(), ErrorInvalidRoundNumber);
-    assert!(opt_round_id.borrow() == round_id, ErrorInvalidRoundNumber);
+    assert!(opt_round_id.borrow() == object::id(round), ErrorInvalidRoundNumber);
 }
 
 #[test_only]

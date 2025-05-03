@@ -13,6 +13,7 @@ use sui::coin::{Self, Coin, from_balance};
 use sui::event::emit;
 use sui::random::{Random, new_generator};
 
+// Error codes
 const ErrorNotOneTimeWitness: u64 = 5001;
 const ErrorPurchaseAmountTooLow: u64 = 5002;
 const ErrorLpFeeAmountTooHigh: u64 = 5003;
@@ -193,7 +194,7 @@ public fun purchase_ticket<T>(
 ): Coin<T> {
     phase_info.assert_ticketing_phase();
     phase_info.assert_current_round_number(round.get_round_number());
-    round_registry.assert_valid_round_id(round.get_round_number(), object::id(round));
+    round_registry.assert_round(round);
 
     let purchase_value = purchase_coin.value();
     assert!(purchase_value > 0, ErrorPurchaseAmountTooLow);
@@ -244,7 +245,7 @@ entry fun draw<T>(
 ) {
     phase_info.assert_drawing_phase();
     phase_info.assert_current_round_number(round.get_round_number());
-    round_registry.assert_valid_round_id(round.get_round_number(), object::id(round));
+    round_registry.assert_round(round);
 
     let prize_reserves_value = prize_pool.get_total_prize_reserves_value<T>(pool_registry);
     let lp_ticket = prize_pool.inner_cal_lp_ticket(prize_reserves_value);
@@ -278,22 +279,22 @@ public fun distribute<T>(
 ) {
     phase_info.assert_distributing_phase();
     phase_info.assert_current_round_number(round.get_round_number());
-    round_registry.assert_valid_round_id(round.get_round_number(), object::id(round));
+    round_registry.assert_round(round);
 
     if (round.get_winner().is_some()) {
         let winner = round.get_winner().extract();
-        let lounge_number = lounge_cap.create_lounge<T>(
-            lounge_registry,
-            round.get_round_number(),
-            winner,
-            ctx,
-        );
-        prize_pool.inner_aggregate_prize_to_lounge<T>(
+        let prize_coin=  prize_pool.inner_aggregate_prize_to_lounge<T>(
             phase_info,
             pool_cap,
             pool_registry,
+            ctx,
+        );
+
+        lounge_cap.create_lounge<T>(
             lounge_registry,
-            lounge_number,
+            round.get_round_number(),
+            winner,
+            prize_coin,
             ctx,
         );
     };
@@ -312,14 +313,13 @@ fun inner_aggregate_prize_to_lounge<T>(
     phase_info: &PhaseInfo,
     pool_cap: &PoolCap,
     pool_registry: &mut PoolRegistry,
-    lounge_registry: &mut LoungeRegistry,
-    lounge_number: u64,
     ctx: &mut TxContext,
-) {
+): Coin<T> {
     let risk_ratios = pool_registry.get_pool_risk_ratios();
     let risk_ratios_len = risk_ratios.length();
 
     let mut i = 0;
+    let mut total_balance = balance::zero<T>();
     while (i < risk_ratios_len) {
         let risk_ratio_bps = risk_ratios[i];
         let prize_coin = pool_cap.withdraw_prize<T>(
@@ -329,10 +329,11 @@ fun inner_aggregate_prize_to_lounge<T>(
             ctx,
         );
 
-        lounge_registry.add_reserves(lounge_number, prize_coin);
-
+        balance::join(&mut total_balance, prize_coin.into_balance());
         i = i + 1;
     };
+
+    from_balance(total_balance, ctx)
 }
 
 fun inner_distribute_fee_to_pools<T>(
