@@ -1,6 +1,7 @@
 /// Calculates ticket amounts with fees for the lottery system.
 module anglerfish::ticket_calculator;
 
+// Error codes
 const ErrorInvalidFees: u64 = 2001;
 
 /// Basis points denominator (10000 = 100%).

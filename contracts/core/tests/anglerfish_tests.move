@@ -2,7 +2,7 @@
 #[test_only]
 module anglerfish::anglerfish_tests;
 
-use anglerfish::lounge::{Self, LoungeCap, LoungeRegistry};
+use anglerfish::lounge::{Self, LoungeCap, LoungeRegistry, Lounge};
 use anglerfish::phase::{Self, PhaseInfo, PhaseInfoCap};
 use anglerfish::pool::{Self, PoolCap, PoolRegistry};
 use anglerfish::prize_pool::{Self, PrizePool, PrizePoolCap};
@@ -122,31 +122,33 @@ fun test_lounge_create_and_claim() {
         &mut scenario,
     );
 
+    let coin = coin::mint_for_testing<TEST_COIN>(1000, ts::ctx(&mut scenario));
     ts::next_tx(&mut scenario, ADMIN);
     let mut lounge_registry = ts::take_shared<LoungeRegistry>(&scenario);
-    let lounge_number = lounge::create_lounge<TEST_COIN>(
+    let lounge_id = lounge::create_lounge<TEST_COIN>(
         &lounge_cap,
         &mut lounge_registry,
         1,
         USER1,
+        coin,
         ts::ctx(&mut scenario),
     );
-    assert_eq(lounge_number, 1);
-    assert!(lounge::is_lounge_available(&lounge_registry, 1), 0);
-
-    let coin = coin::mint_for_testing<TEST_COIN>(1000, ts::ctx(&mut scenario));
-    lounge::add_reserves(&mut lounge_registry, lounge_number, coin);
 
     ts::next_tx(&mut scenario, USER1);
+    let mut lounge = ts::take_shared_by_id<Lounge<TEST_COIN>>(&scenario, lounge_id);
+    assert_eq(lounge.get_lounge_number(), 1);
+    assert!(lounge::is_lounge_available(&lounge_registry, 1), 0);
+
     let claimed_coin = lounge::claim<TEST_COIN>(
         &mut lounge_registry,
-        lounge_number,
+        &mut lounge,
         ts::ctx(&mut scenario),
     );
     assert_eq(claimed_coin.value(), 1000);
 
     ts::next_tx(&mut scenario, ADMIN);
     ts::return_shared(lounge_registry);
+    ts::return_shared(lounge);
     ts::return_to_sender(&scenario, prize_pool_cap);
     ts::return_to_sender(&scenario, phase_info_cap);
     ts::return_to_sender(&scenario, pool_cap);
@@ -165,22 +167,28 @@ fun test_lounge_claim_unauthorized() {
     );
 
     ts::next_tx(&mut scenario, ADMIN);
+    let coin = coin::mint_for_testing<TEST_COIN>(1000, ts::ctx(&mut scenario));
     let mut lounge_registry = ts::take_shared<LoungeRegistry>(&scenario);
-    lounge::create_lounge<TEST_COIN>(
+    let lounge_id = lounge::create_lounge<TEST_COIN>(
         &lounge_cap,
         &mut lounge_registry,
         1,
         USER1,
+        coin,
         ts::ctx(&mut scenario),
     );
-    let coin = coin::mint_for_testing<TEST_COIN>(1000, ts::ctx(&mut scenario));
-    lounge::add_reserves(&mut lounge_registry, 1, coin);
 
     ts::next_tx(&mut scenario, USER2);
-    let claim_coin = lounge::claim<TEST_COIN>(&mut lounge_registry, 1, ts::ctx(&mut scenario));
+    let mut lounge = ts::take_shared_by_id<Lounge<TEST_COIN>>(&scenario, lounge_id);
+    let claim_coin = lounge::claim<TEST_COIN>(
+        &mut lounge_registry,
+        &mut lounge,
+        ts::ctx(&mut scenario),
+    );
     assert_eq(claim_coin.value(), 1000);
 
     ts::return_shared(lounge_registry);
+    ts::return_shared(lounge);
     ts::return_to_sender(&scenario, claim_coin);
     ts::return_to_sender(&scenario, prize_pool_cap);
     ts::return_to_sender(&scenario, phase_info_cap);
@@ -722,7 +730,13 @@ fun test_full_lottery_cycle() {
 
     // Claim prize
     ts::next_tx(&mut scenario, USER1);
-    let claimed_coin = lounge::claim<TEST_COIN>(&mut lounge_registry, 1, ts::ctx(&mut scenario));
+    let lounge_id = lounge_registry.get_lounge_id(1).extract();
+    let mut lounge = ts::take_shared_by_id<Lounge<TEST_COIN>>(&scenario, lounge_id);
+    let claimed_coin = lounge::claim<TEST_COIN>(
+        &mut lounge_registry,
+        &mut lounge,
+        ts::ctx(&mut scenario),
+    );
     assert_eq(claimed_coin.value(), total_reserves);
 
     // Claim protocol fee
@@ -742,6 +756,7 @@ fun test_full_lottery_cycle() {
     ts::return_shared(round_registry);
     ts::return_shared(round);
     ts::return_shared(lounge_registry);
+    ts::return_shared(lounge);
     ts::return_to_sender(&scenario, prize_pool_cap);
     ts::return_to_sender(&scenario, phase_info_cap);
     ts::return_to_sender(&scenario, pool_cap);

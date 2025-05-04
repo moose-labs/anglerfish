@@ -2,16 +2,16 @@
 module anglerfish::prize_pool_test;
 
 use anglerfish::base_test_suite::build_base_test_suite;
-use anglerfish::lounge::{Self, LoungeCap};
+use anglerfish::lounge::{LoungeCap, Lounge};
 use anglerfish::lounge_test_suite::build_lounge_test_suite;
 use anglerfish::phase::{Self, PhaseInfoCap};
-use anglerfish::pool::{PoolCap, PoolRegistry};
+use anglerfish::pool::PoolCap;
 use anglerfish::prize_pool::{Self, PrizePoolCap, PrizePool};
 use anglerfish::prize_pool_test_suite::{
     build_prize_pool_test_suite,
     build_initialized_prize_pool_test_suite
 };
-use anglerfish::round::{Self, RoundRegistry, Round};
+use anglerfish::round::{RoundRegistry, Round};
 use sui::balance::create_for_testing as create_balance_for_testing;
 use sui::coin::from_balance;
 use sui::random::Random;
@@ -645,9 +645,12 @@ fun test_draw_on_no_liquidity() {
     // Check the lounge not created
     {
         let round_number = phase_info.get_current_round_number();
-        let lounge = lounge_registry.get_lounge<SUI>(round_number);
+        let lounge_id = lounge_registry.get_lounge_id(round_number).extract();
+        let lounge = scenario.take_shared_by_id<Lounge<SUI>>(lounge_id);
+
         assert!(lounge.get_recipient() == USER1);
         assert!(lounge.get_prize_reserves_value() == 0);
+        test_scenario::return_shared(lounge);
     };
 
     // Check the fee distribution
@@ -953,14 +956,17 @@ fun test_player_win_scenario() {
     scenario.next_tx(USER1);
     {
         let round_number = phase_info.get_current_round_number();
-        let lounge = lounge_registry.get_lounge<SUI>(round_number);
+        let lounge_id = lounge_registry.get_lounge_id(round_number).extract();
+        let mut lounge = scenario.take_shared_by_id<Lounge<SUI>>(lounge_id);
+
         assert!(lounge.get_recipient() == USER1);
         assert!(lounge.get_prize_reserves_value<SUI>() == 2400000);
 
-        let prize_coin = lounge_registry.claim<SUI>(1, scenario.ctx());
+        let prize_coin = lounge_registry.claim<SUI>(&mut lounge, scenario.ctx());
         assert!(prize_coin.value() == 2400000);
 
         test_utils::destroy(prize_coin);
+        test_scenario::return_shared(lounge);
     };
 
     // Check the fee distribution

@@ -4,6 +4,7 @@ module anglerfish::phase;
 use sui::clock::Clock;
 use sui::event::emit;
 
+// Error codes
 const ErrorNotOneTimeWitness: u64 = 1;
 const ErrorUninitialized: u64 = 2;
 const ErrorAlreadyInitialized: u64 = 3;
