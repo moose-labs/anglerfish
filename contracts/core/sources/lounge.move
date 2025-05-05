@@ -81,7 +81,7 @@ fun init(witness: LOUNGE, ctx: &mut TxContext) {
 }
 
 /// Creates a Lounge for a winner to claim prizes.
-public fun create_lounge<T>(
+public(package) fun create_lounge<T>(
     _self: &LoungeCap,
     lounge_registry: &mut LoungeRegistry,
     lounge_number: u64,
@@ -143,11 +143,7 @@ public fun claim<T>(
 }
 
 /// Adds reserves to a lounge for prize distribution.
-public(package) fun add_reserves<T>(
-    self: &LoungeRegistry,
-    lounge: &mut Lounge<T>,
-    coin: Coin<T>,
-) {
+public(package) fun add_reserves<T>(self: &LoungeRegistry, lounge: &mut Lounge<T>, coin: Coin<T>) {
     self.assert_lounge(lounge);
 
     coin::put(&mut lounge.reserves, coin);
