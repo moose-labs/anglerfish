@@ -223,6 +223,9 @@ fun test_phase_transitions() {
     );
     phase_info.assert_settling_phase();
 
+    let mut prize_pool = ts::take_shared<PrizePool>(&scenario);
+    prize_pool_cap.set_price_per_ticket(&mut prize_pool, &phase_info, 100);
+
     let mut clock = clock::create_for_testing(ts::ctx(&mut scenario));
     prize_pool::start_new_round(
         &prize_pool_cap,
@@ -230,6 +233,7 @@ fun test_phase_transitions() {
         &phase_info_cap,
         &mut phase_info,
         &mut round_registry,
+        &prize_pool,
         &clock,
         ts::ctx(&mut scenario),
     );
@@ -247,6 +251,7 @@ fun test_phase_transitions() {
     clock::destroy_for_testing(clock);
     ts::return_shared(phase_info);
     ts::return_shared(round_registry);
+    ts::return_shared(prize_pool);
     ts::return_to_sender(&scenario, prize_pool_cap);
     ts::return_to_sender(&scenario, phase_info_cap);
     ts::return_to_sender(&scenario, pool_cap);
@@ -380,6 +385,7 @@ fun test_pool_deposit_and_redeem() {
     {
         let mut phase_info = ts::take_shared<PhaseInfo>(&scenario);
         let mut round_registry = ts::take_shared<RoundRegistry>(&scenario);
+        let prize_pool = ts::take_shared<PrizePool>(&scenario);
         let clock = clock::create_for_testing(ts::ctx(&mut scenario));
         prize_pool::start_new_round(
             &prize_pool_cap,
@@ -387,10 +393,12 @@ fun test_pool_deposit_and_redeem() {
             &phase_info_cap,
             &mut phase_info,
             &mut round_registry,
+            &prize_pool,
             &clock,
             ts::ctx(&mut scenario),
         );
         ts::return_shared(phase_info);
+        ts::return_shared(prize_pool);
         ts::return_shared(round_registry);
         clock::destroy_for_testing(clock);
     };
@@ -464,6 +472,7 @@ fun test_pool_redeem_too_large() {
     {
         let mut phase_info = ts::take_shared<PhaseInfo>(&scenario);
         let mut round_registry = ts::take_shared<RoundRegistry>(&scenario);
+        let prize_pool = ts::take_shared<PrizePool>(&scenario);
         let clock = clock::create_for_testing(ts::ctx(&mut scenario));
         prize_pool::start_new_round(
             &prize_pool_cap,
@@ -471,10 +480,12 @@ fun test_pool_redeem_too_large() {
             &phase_info_cap,
             &mut phase_info,
             &mut round_registry,
+            &prize_pool,
             &clock,
             ts::ctx(&mut scenario),
         );
         ts::return_shared(phase_info);
+        ts::return_shared(prize_pool);
         ts::return_shared(round_registry);
         clock::destroy_for_testing(clock);
     };
@@ -523,6 +534,7 @@ fun test_purchase_ticket() {
     ts::next_tx(&mut scenario, ADMIN);
     let mut phase_info = ts::take_shared<PhaseInfo>(&scenario);
     let mut round_registry = ts::take_shared<RoundRegistry>(&scenario);
+    let mut prize_pool = ts::take_shared<PrizePool>(&scenario);
     let mut clock = clock::create_for_testing(ts::ctx(&mut scenario));
     prize_pool::start_new_round(
         &prize_pool_cap,
@@ -530,6 +542,7 @@ fun test_purchase_ticket() {
         &phase_info_cap,
         &mut phase_info,
         &mut round_registry,
+        &prize_pool,
         &clock,
         ts::ctx(&mut scenario),
     );
@@ -538,7 +551,6 @@ fun test_purchase_ticket() {
     phase::next_entry(&phase_info_cap, &mut phase_info, &clock, ts::ctx(&mut scenario));
 
     ts::next_tx(&mut scenario, USER1);
-    let mut prize_pool = ts::take_shared<PrizePool>(&scenario);
     let round_id = round::get_round_id(&round_registry, 1).extract();
     let mut round = ts::take_shared_by_id<Round>(&scenario, round_id);
     let coin = coin::mint_for_testing<TEST_COIN>(3000, ts::ctx(&mut scenario));
@@ -583,6 +595,7 @@ fun test_purchase_ticket_zero() {
     ts::next_tx(&mut scenario, ADMIN);
     let mut phase_info = ts::take_shared<PhaseInfo>(&scenario);
     let mut round_registry = ts::take_shared<RoundRegistry>(&scenario);
+    let mut prize_pool = ts::take_shared<PrizePool>(&scenario);
     let mut clock = clock::create_for_testing(ts::ctx(&mut scenario));
     prize_pool::start_new_round(
         &prize_pool_cap,
@@ -590,6 +603,7 @@ fun test_purchase_ticket_zero() {
         &phase_info_cap,
         &mut phase_info,
         &mut round_registry,
+        &prize_pool,
         &clock,
         ts::ctx(&mut scenario),
     );
@@ -598,7 +612,6 @@ fun test_purchase_ticket_zero() {
     phase::next_entry(&phase_info_cap, &mut phase_info, &clock, ts::ctx(&mut scenario));
 
     ts::next_tx(&mut scenario, USER1);
-    let mut prize_pool = ts::take_shared<PrizePool>(&scenario);
     let round_id = round::get_round_id(&round_registry, 1).extract();
     let mut round = ts::take_shared_by_id<Round>(&scenario, round_id);
     let coin = coin::mint_for_testing<TEST_COIN>(0, ts::ctx(&mut scenario));
@@ -638,6 +651,7 @@ fun test_full_lottery_cycle() {
     {
         let mut phase_info = ts::take_shared<PhaseInfo>(&scenario);
         let mut round_registry = ts::take_shared<RoundRegistry>(&scenario);
+        let prize_pool = ts::take_shared<PrizePool>(&scenario);
         let clock = clock::create_for_testing(ts::ctx(&mut scenario));
 
         prize_pool_cap.start_new_round(
@@ -645,11 +659,13 @@ fun test_full_lottery_cycle() {
             &phase_info_cap,
             &mut phase_info,
             &mut round_registry,
+            &prize_pool,
             &clock,
             ts::ctx(&mut scenario),
         );
 
         ts::return_shared(phase_info);
+        ts::return_shared(prize_pool);
         ts::return_shared(round_registry);
         clock::destroy_for_testing(clock);
     };

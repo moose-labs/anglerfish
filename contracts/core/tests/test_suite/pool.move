@@ -87,6 +87,7 @@ public fun build_liquidity_providing_phase_pool_test_suite(
             &phase_info_cap,
             &mut phase_info,
             &mut round_registry,
+            &prize_pool,
             &clock,
             scenario.ctx(),
         );

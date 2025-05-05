@@ -20,6 +20,7 @@ const ErrorLpFeeAmountTooHigh: u64 = 5003;
 const ErrorProtocolFeeAmountTooHigh: u64 = 5004;
 const ErrorExcessiveFeeCharged: u64 = 5005;
 const ErrorInvalidRoundNumberSequence: u64 = 5006;
+const ErrorZeroPricePerTicket: u64 = 5007;
 
 const TREASURY_RESERVES_KEY: vector<u8> = b"treasury_reserves";
 const LP_FEE_RESERVES_KEY: vector<u8> = b"lp_fee_reserves";
@@ -117,11 +118,14 @@ public fun start_new_round(
     phase_info_cap: &PhaseInfoCap,
     phase_info: &mut PhaseInfo,
     round_registry: &mut RoundRegistry,
+    prize_pool: &PrizePool,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     // Must be in Settling phase
     phase_info.assert_settling_phase();
+
+    assert!(prize_pool.price_per_ticket > 0, ErrorZeroPricePerTicket);
 
     let prev_round_number = phase_info.get_current_round_number();
 
