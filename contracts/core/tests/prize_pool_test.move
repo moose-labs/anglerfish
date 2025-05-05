@@ -1,16 +1,15 @@
 #[test_only]
 module anglerfish::prize_pool_test;
 
-use anglerfish::base_test_suite::build_base_test_suite;
 use anglerfish::lounge::{LoungeCap, Lounge};
-use anglerfish::lounge_test_suite::build_lounge_test_suite;
 use anglerfish::phase::{Self, PhaseInfoCap};
 use anglerfish::pool::PoolCap;
-use anglerfish::prize_pool::{Self, PrizePoolCap, PrizePool};
-use anglerfish::prize_pool_test_suite::{
-    build_prize_pool_test_suite,
-    build_initialized_prize_pool_test_suite
+use anglerfish::pool_test_suite::{
+    build_liquidity_providing_phase_pool_test_suite,
+    build_ticketing_phase_no_liquidity_pool_test_suite,
+    build_ticketing_phase_with_liquidity_pool_test_suite
 };
+use anglerfish::prize_pool::{Self, PrizePoolCap};
 use anglerfish::round::{RoundRegistry, Round};
 use sui::balance::create_for_testing as create_balance_for_testing;
 use sui::coin::from_balance;
@@ -20,120 +19,6 @@ use sui::test_scenario;
 use sui::test_utils;
 
 const AUTHORITY: address = @0xAAA;
-const UNAUTHORIZED: address = @0xFFF;
-
-/// Capability cases
-/// - capability cannot be taken by an unauthorized user
-/// - can set pool factory
-/// - can set lounge factory
-/// - can set max players
-/// - can set price per ticket
-/// - can set protocol fee
-/// - can claim protocol fee
-///
-/// User scenarios
-/// - cannot purchase ticket outside ticketing phase
-/// - cannot purchase ticket while pool is reached max players
-/// - cannot purchase ticket with zero amount (0 value)
-/// - cannot purchase ticket with zero value (0 < purcahse_value < ticket_price)
-/// - can purchase ticket
-///     - fee reserves should increased
-///     - protocol fee reserves should increased
-///     - ticket reserves should increased
-///     - user tickets should increased
-///     - total ticket purchased should increased
-/// - can determine winner (player win)
-///     - lounge should be created with prize reserves
-///     - fee reserves should be distributed to the pools
-/// - can determine winner (player lose)
-///     - lounge should be non-existent
-///     - ticket reserves should be distributed to the pools
-///     - fee reserves should be distributed to the pools
-///
-
-#[test]
-#[expected_failure(abort_code = test_scenario::EEmptyInventory)]
-fun test_capability_cannot_be_taken_by_unauthorized_user() {
-    let (mut scenario, clock) = build_base_test_suite(
-        AUTHORITY,
-    );
-
-    scenario.next_tx(UNAUTHORIZED);
-    {
-        let pool_cap = scenario.take_from_sender<PrizePoolCap>();
-
-        scenario.return_to_sender(pool_cap)
-    };
-
-    clock.destroy_for_testing();
-    scenario.end();
-}
-
-#[test]
-fun test_set_initialize_parameters() {
-    let (
-        mut scenario,
-        clock,
-        phase_info,
-        pool_registry,
-        lounge_registry,
-        mut prize_pool,
-    ) = build_prize_pool_test_suite(
-        AUTHORITY,
-    );
-
-    // Set price per ticket
-    scenario.next_tx(AUTHORITY);
-    {
-        let pool_cap = scenario.take_from_sender<PrizePoolCap>();
-
-        assert!(prize_pool.get_price_per_ticket() == 0);
-        pool_cap.set_price_per_ticket(
-            &mut prize_pool,
-            100,
-        );
-        assert!(prize_pool.get_price_per_ticket() == 100);
-
-        scenario.return_to_sender(pool_cap);
-    };
-
-    // Set fee bps
-    scenario.next_tx(AUTHORITY);
-    {
-        let pool_cap = scenario.take_from_sender<PrizePoolCap>();
-
-        assert!(prize_pool.get_lp_fee_bps() == 2500); // default value
-        pool_cap.set_lp_fee_bps(
-            &mut prize_pool,
-            5000,
-        );
-        assert!(prize_pool.get_lp_fee_bps() == 5000);
-
-        scenario.return_to_sender(pool_cap);
-    };
-
-    // Set protocol fee bps
-    scenario.next_tx(AUTHORITY);
-    {
-        let pool_cap = scenario.take_from_sender<PrizePoolCap>();
-
-        assert!(prize_pool.get_protocol_fee_bps() == 500); // default value
-        pool_cap.set_protocol_fee_bps(
-            &mut prize_pool,
-            1000,
-        );
-        assert!(prize_pool.get_protocol_fee_bps() == 1000);
-
-        scenario.return_to_sender(pool_cap);
-    };
-
-    test_scenario::return_shared(phase_info);
-    test_scenario::return_shared(pool_registry);
-    test_scenario::return_shared(lounge_registry);
-    test_scenario::return_shared(prize_pool);
-    clock.destroy_for_testing();
-    scenario.end();
-}
 
 // user scenarios
 // - cannot purchase ticket outside ticketing phase
@@ -166,10 +51,10 @@ fun test_cannot_purchase_ticket_outside_ticketing_phase() {
         mut scenario,
         mut clock,
         mut phase_info,
-        pool_registry,
-        lounge_registry,
         mut prize_pool,
-    ) = build_initialized_prize_pool_test_suite(
+        lounge_registry,
+        pool_registry,
+    ) = build_liquidity_providing_phase_pool_test_suite(
         AUTHORITY,
     );
 
@@ -214,56 +99,6 @@ fun test_cannot_purchase_ticket_outside_ticketing_phase() {
     scenario.end();
 }
 
-// #[test]
-// #[expected_failure(abort_code = prize_pool::ErrorMaximumNumberOfPlayersReached)]
-// fun test_cannot_purchase_ticket_while_pool_reached_max_players() {
-//     let (
-//         mut scenario,
-//         clock,
-//         phase_info,
-//         pool_registry,
-//         lounge_registry,
-//         mut prize_pool,
-//     ) = build_initialized_prize_pool_test_suite(
-//         AUTHORITY,
-//     );
-
-//     scenario.next_tx(AUTHORITY);
-//     {
-//         let pool_cap = scenario.take_from_sender<PrizePoolCap>();
-//         pool_cap.set_max_players(&mut prize_pool, 1, scenario.ctx());
-//         scenario.return_to_sender(pool_cap);
-//     };
-
-//     assert!(prize_pool.get_max_players() == 1);
-//     assert!(prize_pool.get_price_per_ticket() == 100);
-
-//     scenario.next_tx(USER1);
-//     {
-//         let coin = from_balance(create_balance_for_testing<SUI>(100), scenario.ctx());
-//         let refund_coin = prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
-
-//         assert!(refund_coin.value() == 0);
-//         refund_coin.burn_for_testing()
-//     };
-
-//     scenario.next_tx(USER2);
-//     {
-//         let coin = from_balance(create_balance_for_testing<SUI>(100), scenario.ctx());
-//         let refund_coin = prize_pool.purchase_ticket<SUI>(&phase_info, coin, scenario.ctx());
-
-//         assert!(refund_coin.value() == 0);
-//         refund_coin.burn_for_testing()
-//     };
-
-//     test_scenario::return_shared(phase_info);
-//     test_scenario::return_shared(pool_registry);
-//     test_scenario::return_shared(lounge_registry);
-//     test_scenario::return_shared(prize_pool);
-//     clock.destroy_for_testing();
-//     scenario.end();
-// }
-
 #[test]
 #[expected_failure(abort_code = prize_pool::ErrorPurchaseAmountTooLow)]
 fun test_cannot_purchase_ticket_with_zero_value() {
@@ -271,10 +106,10 @@ fun test_cannot_purchase_ticket_with_zero_value() {
         mut scenario,
         clock,
         phase_info,
-        pool_registry,
-        lounge_registry,
         mut prize_pool,
-    ) = build_initialized_prize_pool_test_suite(
+        lounge_registry,
+        pool_registry,
+    ) = build_ticketing_phase_no_liquidity_pool_test_suite(
         AUTHORITY,
     );
 
@@ -315,10 +150,10 @@ fun test_cannot_purchase_ticket_with_zero_ticket() {
         mut scenario,
         clock,
         phase_info,
-        pool_registry,
-        lounge_registry,
         mut prize_pool,
-    ) = build_initialized_prize_pool_test_suite(
+        lounge_registry,
+        pool_registry,
+    ) = build_ticketing_phase_no_liquidity_pool_test_suite(
         AUTHORITY,
     );
 
@@ -360,10 +195,10 @@ fun test_purchase_tickets_should_floored_to_ticket_price() {
         mut scenario,
         clock,
         phase_info,
-        pool_registry,
-        lounge_registry,
         mut prize_pool,
-    ) = build_initialized_prize_pool_test_suite(
+        lounge_registry,
+        pool_registry,
+    ) = build_ticketing_phase_no_liquidity_pool_test_suite(
         AUTHORITY,
     );
 
@@ -409,10 +244,10 @@ fun test_fee_distributions() {
         mut scenario,
         clock,
         phase_info,
-        pool_registry,
-        lounge_registry,
         mut prize_pool,
-    ) = build_initialized_prize_pool_test_suite(
+        lounge_registry,
+        pool_registry,
+    ) = build_ticketing_phase_no_liquidity_pool_test_suite(
         AUTHORITY,
     );
 
@@ -488,38 +323,16 @@ fun test_draw_on_no_liquidity() {
         mut scenario,
         mut clock,
         mut phase_info,
-        mut pool_registry,
+        mut prize_pool,
         mut lounge_registry,
-    ) = build_lounge_test_suite(
+        mut pool_registry,
+    ) = build_ticketing_phase_no_liquidity_pool_test_suite(
         AUTHORITY,
     );
 
-    let mut prize_pool = scenario.take_shared<PrizePool>();
-
-    // Initilize empty prize pool
-    scenario.next_tx(AUTHORITY);
+    // Validate the prize is empty
     {
-        let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
-
-        prize_pool_cap.set_price_per_ticket(&mut prize_pool, 100);
-        prize_pool_cap.set_lp_fee_bps(&mut prize_pool, 2500);
-        prize_pool_cap.set_protocol_fee_bps(
-            &mut prize_pool,
-            500,
-        );
-
-        scenario.return_to_sender(prize_pool_cap);
-    };
-
-    // iterate to Ticketing
-    scenario.next_tx(AUTHORITY);
-    {
-        let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
-
-        clock.increment_for_testing(PHASE_DURATION);
-        phase_info_cap.next(&mut phase_info, &clock, scenario.ctx());
-
-        scenario.return_to_sender(phase_info_cap);
+        assert!(prize_pool.get_total_prize_reserves_value<SUI>(&pool_registry) == 0);
     };
 
     scenario.next_tx(USER1);
@@ -688,10 +501,10 @@ fun test_draw_on_no_ticket_purchased() {
         mut scenario,
         mut clock,
         mut phase_info,
-        mut pool_registry,
-        mut lounge_registry,
         mut prize_pool,
-    ) = build_initialized_prize_pool_test_suite(
+        mut lounge_registry,
+        mut pool_registry,
+    ) = build_ticketing_phase_with_liquidity_pool_test_suite(
         AUTHORITY,
     );
 
@@ -819,10 +632,10 @@ fun test_player_win_scenario() {
         mut scenario,
         mut clock,
         mut phase_info,
-        mut pool_registry,
-        mut lounge_registry,
         mut prize_pool,
-    ) = build_initialized_prize_pool_test_suite(
+        mut lounge_registry,
+        mut pool_registry,
+    ) = build_ticketing_phase_with_liquidity_pool_test_suite(
         AUTHORITY,
     );
 
@@ -1027,10 +840,10 @@ fun test_lp_win_scenario() {
         mut scenario,
         mut clock,
         mut phase_info,
-        mut pool_registry,
-        mut lounge_registry,
         mut prize_pool,
-    ) = build_initialized_prize_pool_test_suite(
+        mut lounge_registry,
+        mut pool_registry,
+    ) = build_ticketing_phase_with_liquidity_pool_test_suite(
         AUTHORITY,
     );
 

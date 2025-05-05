@@ -1,7 +1,7 @@
 #[test_only]
 module anglerfish::pool_large_deposit_test;
 
-use anglerfish::pool_test_suite::build_pool_test_suite;
+use anglerfish::pool_test_suite::build_liquidity_providing_phase_pool_test_suite;
 use sui::balance::create_for_testing as create_balance_for_testing;
 use sui::sui::SUI;
 use sui::test_scenario;
@@ -16,7 +16,14 @@ fun sui(amt: u64): u64 {
 
 #[test]
 fun test_pool_deposit_redeem_shares() {
-    let (mut scenario, clock, phase_info, mut pool_registry) = build_pool_test_suite(
+    let (
+        mut scenario,
+        clock,
+        phase_info,
+        prize_pool,
+        lounge_registry,
+        mut pool_registry,
+    ) = build_liquidity_providing_phase_pool_test_suite(
         AUTHORITY,
     );
 
@@ -53,6 +60,8 @@ fun test_pool_deposit_redeem_shares() {
     };
 
     test_scenario::return_shared(phase_info);
+    test_scenario::return_shared(prize_pool);
+    test_scenario::return_shared(lounge_registry);
     test_scenario::return_shared(pool_registry);
     clock.destroy_for_testing();
     scenario.end();

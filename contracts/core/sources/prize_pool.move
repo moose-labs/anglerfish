@@ -79,13 +79,21 @@ fun init(witness: PRIZE_POOL, ctx: &mut TxContext) {
 public fun set_price_per_ticket(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
+    phase_info: &PhaseInfo,
     price_per_ticket: u64,
 ) {
+    phase_info.assert_settling_phase();
     prize_pool.price_per_ticket = price_per_ticket;
 }
 
 /// Sets the liquidity provider fee in basis points.
-public fun set_lp_fee_bps(_self: &PrizePoolCap, prize_pool: &mut PrizePool, lp_fee_bps: u64) {
+public fun set_lp_fee_bps(
+    _self: &PrizePoolCap,
+    prize_pool: &mut PrizePool,
+    phase_info: &PhaseInfo,
+    lp_fee_bps: u64,
+) {
+    phase_info.assert_settling_phase();
     assert!(lp_fee_bps < 6000, ErrorLpFeeAmountTooHigh);
     prize_pool.lp_fee_bps = lp_fee_bps;
 }
@@ -94,8 +102,10 @@ public fun set_lp_fee_bps(_self: &PrizePoolCap, prize_pool: &mut PrizePool, lp_f
 public fun set_protocol_fee_bps(
     _self: &PrizePoolCap,
     prize_pool: &mut PrizePool,
+    phase_info: &PhaseInfo,
     protocol_fee_bps: u64,
 ) {
+    phase_info.assert_settling_phase();
     assert!(protocol_fee_bps < 3000, ErrorProtocolFeeAmountTooHigh);
     prize_pool.protocol_fee_bps = protocol_fee_bps;
 }
@@ -283,7 +293,7 @@ public fun distribute<T>(
 
     if (round.get_winner().is_some()) {
         let winner = round.get_winner().extract();
-        let prize_coin=  prize_pool.inner_aggregate_prize_to_lounge<T>(
+        let prize_coin = prize_pool.inner_aggregate_prize_to_lounge<T>(
             phase_info,
             pool_cap,
             pool_registry,

@@ -15,8 +15,6 @@ public fun build_phase_test_suite(authority: address): (Scenario, Clock, PhaseIn
 
     scenario.next_tx(authority);
 
-    // Prepare liquidity providing phase
-
     let mut phase_info = scenario.take_shared<PhaseInfo>();
 
     {

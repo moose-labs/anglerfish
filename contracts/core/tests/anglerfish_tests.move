@@ -84,9 +84,14 @@ fun initialize_phase_and_pool(
         ts::ctx(scenario),
     );
 
-    prize_pool::set_price_per_ticket(prize_pool_cap, &mut prize_pool, TICKET_PRICE);
-    prize_pool::set_lp_fee_bps(prize_pool_cap, &mut prize_pool, LP_FEE_BPS);
-    prize_pool::set_protocol_fee_bps(prize_pool_cap, &mut prize_pool, PROTOCOL_FEE_BPS);
+    prize_pool::set_price_per_ticket(prize_pool_cap, &mut prize_pool, &phase_info, TICKET_PRICE);
+    prize_pool::set_lp_fee_bps(prize_pool_cap, &mut prize_pool, &phase_info, LP_FEE_BPS);
+    prize_pool::set_protocol_fee_bps(
+        prize_pool_cap,
+        &mut prize_pool,
+        &phase_info,
+        PROTOCOL_FEE_BPS,
+    );
 
     pool::set_deposit_enabled<TEST_COIN>(pool_cap, &mut pool_registry, RISK_RATIO_BPS, true);
 
