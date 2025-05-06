@@ -121,10 +121,14 @@ public fun build_ticketing_phase_with_liquidity_pool_test_suite(
     phase_info.assert_liquidity_providing_phase();
 
     // Deposit liquidity into the pools
-    // - 1m into 20% pool each (prize = 200_000 per user)
-    // - 2m into 50% pool each (prize = 1_000_000 per user)
-    // Total liquidity is 6_000_000
-    // Total prize is 2_400_000
+    // User 1:
+    // - Deposit 1_000_000 into 20% pool (prize = 200_000)
+    // - Deposit 2_000_000 into 50% pool (prize = 1_000_000)
+    // User 2:
+    // - Deposit 1_000_000 into 20% pool (prize = 200_000)
+    // - Deposit 2_000_000 into 50% pool (prize = 1_000_000)
+    // = Total liquidity is 6_000_000
+    // = Total prize is 2_400_000
     let user1: address = @0x001;
     let user2: address = @0x002;
 

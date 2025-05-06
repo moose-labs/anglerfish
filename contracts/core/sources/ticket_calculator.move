@@ -1,7 +1,8 @@
 /// Calculates ticket amounts with fees for the lottery system.
 module anglerfish::ticket_calculator;
 
-// Error codes
+use math::u64::mul_div;
+
 const ErrorInvalidFees: u64 = 2001;
 
 /// Basis points denominator (10000 = 100%).
@@ -11,7 +12,7 @@ const BPS_DENOMINATOR: u64 = 10000;
 public(package) fun calculate_total_ticket_with_fees(ticket_amount: u64, total_fees_bps: u64): u64 {
     assert!(total_fees_bps < BPS_DENOMINATOR, ErrorInvalidFees);
     let denominator = BPS_DENOMINATOR - total_fees_bps;
-    ticket_amount * BPS_DENOMINATOR / denominator
+    mul_div(ticket_amount, BPS_DENOMINATOR, denominator)
 }
 
 #[test]

@@ -10,6 +10,7 @@ use sui::test_scenario::Scenario;
 const PRIZE_POOL_PRICE_PER_TICKET: u64 = 100;
 const PRIZE_POOL_LP_FEE_BPS: u64 = 2500;
 const PRIZE_POOL_PROTOCOL_FEE_BPS: u64 = 500;
+const PRIZE_POOL_REFERRER_FEE_BPS: u64 = 1000;
 
 /// build_prize_pool_test_suite
 public fun build_prize_pool_test_suite(
@@ -47,6 +48,12 @@ public fun build_initialized_prize_pool_test_suite(
             &mut prize_pool,
             &phase_info,
             PRIZE_POOL_PROTOCOL_FEE_BPS,
+        );
+
+        prize_pool_cap.set_referrer_fee_bps(
+            &mut prize_pool,
+            &phase_info,
+            PRIZE_POOL_REFERRER_FEE_BPS,
         );
 
         scenario.return_to_sender(prize_pool_cap);

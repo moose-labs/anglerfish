@@ -6,6 +6,7 @@ use anglerfish::phase::{PhaseInfo, PhaseInfoCap};
 use anglerfish::pool::{PoolRegistry, PoolCap};
 use anglerfish::round::{Round, RoundRegistry, RoundRegistryCap};
 use anglerfish::ticket_calculator::calculate_total_ticket_with_fees;
+use math::u64::mul_div;
 use sui::bag::{Self, Bag};
 use sui::balance::{Self, Balance};
 use sui::clock::Clock;
@@ -18,9 +19,10 @@ const ErrorNotOneTimeWitness: u64 = 5001;
 const ErrorPurchaseAmountTooLow: u64 = 5002;
 const ErrorLpFeeAmountTooHigh: u64 = 5003;
 const ErrorProtocolFeeAmountTooHigh: u64 = 5004;
-const ErrorExcessiveFeeCharged: u64 = 5005;
-const ErrorInvalidRoundNumberSequence: u64 = 5006;
-const ErrorZeroPricePerTicket: u64 = 5007;
+const ErrorReferrerFeeAmountTooHigh: u64 = 5005;
+const ErrorExcessiveFeeCharged: u64 = 5006;
+const ErrorInvalidRoundNumberSequence: u64 = 5007;
+const ErrorZeroPricePerTicket: u64 = 5008;
 
 const TREASURY_RESERVES_KEY: vector<u8> = b"treasury_reserves";
 const LP_FEE_RESERVES_KEY: vector<u8> = b"lp_fee_reserves";
@@ -48,6 +50,8 @@ public struct PrizePool has key {
     lp_fee_bps: u64,
     /// The protocol fee in basis points
     protocol_fee_bps: u64,
+    /// The referrer fee in basis points
+    referrer_fee_bps: u64,
     /// The reserves bag that hold the purchased tickets, fees, and protocol fees
     reserves: Bag,
 }
@@ -67,6 +71,7 @@ fun init(witness: PRIZE_POOL, ctx: &mut TxContext) {
         price_per_ticket: 0,
         lp_fee_bps: 2500,
         protocol_fee_bps: 500,
+        referrer_fee_bps: 1000,
         reserves: bag::new(ctx),
     };
 
@@ -109,6 +114,18 @@ public fun set_protocol_fee_bps(
     phase_info.assert_settling_phase();
     assert!(protocol_fee_bps < 3000, ErrorProtocolFeeAmountTooHigh);
     prize_pool.protocol_fee_bps = protocol_fee_bps;
+}
+
+/// Sets the referrer fee in basis points.
+public fun set_referrer_fee_bps(
+    _self: &PrizePoolCap,
+    prize_pool: &mut PrizePool,
+    phase_info: &PhaseInfo,
+    referrer_fee_bps: u64,
+) {
+    phase_info.assert_settling_phase();
+    assert!(referrer_fee_bps < 3000, ErrorReferrerFeeAmountTooHigh);
+    prize_pool.referrer_fee_bps = referrer_fee_bps;
 }
 
 /// Starts a new round in Settling phase, advancing to LiquidityProviding.
@@ -175,6 +192,10 @@ public fun get_protocol_fee_bps(self: &PrizePool): u64 {
     self.protocol_fee_bps
 }
 
+public fun get_referrer_fee_bps(self: &PrizePool): u64 {
+    self.referrer_fee_bps
+}
+
 /// Public views & functions
 
 /// Gets the total prize reserves value from the pool registry.
@@ -204,6 +225,7 @@ public fun purchase_ticket<T>(
     round: &mut Round,
     phase_info: &PhaseInfo,
     purchase_coin: Coin<T>,
+    referrer: Option<address>,
     ctx: &mut TxContext,
 ): Coin<T> {
     phase_info.assert_ticketing_phase();
@@ -221,19 +243,33 @@ public fun purchase_ticket<T>(
 
     let mut purchase_coin = purchase_coin;
 
-    // Transfer fee coin to lp fee reserves
-    let lp_fee_amount = self.inner_get_lp_fee_amount(ticket_cost);
-    let lp_fee_reserves = self.inner_get_lp_fee_reserves_balance_mut<T>();
-    coin::put(lp_fee_reserves, purchase_coin.split(lp_fee_amount, ctx));
+    let lp_fee_value = self.inner_get_lp_fee_amount(ticket_cost);
+    let protocol_fee_value = self.inner_get_protocol_fee_amount(ticket_cost);
+    let referrer_fee_value = self.inner_get_referrer_fee_amount(ticket_cost);
 
     // Transfer protocol fee coin to protocol fee reserves
-    let protocol_fee_amount = self.inner_get_protocol_fee_amount(ticket_cost);
     let protocol_fee_reserves = self.inner_get_protocol_fee_reserves_balance_mut<T>();
-    coin::put(protocol_fee_reserves, purchase_coin.split(protocol_fee_amount, ctx));
+    coin::put(protocol_fee_reserves, purchase_coin.split(protocol_fee_value, ctx));
 
-    // Transfer ticket coin to treasury reserves
-    assert!(ticket_cost > lp_fee_amount + protocol_fee_amount, ErrorExcessiveFeeCharged);
-    let ticket_cost_after_fees = ticket_cost - lp_fee_amount - protocol_fee_amount;
+    // Transfer fee coin to lp fee reserves
+    let lp_fee_reserves = self.inner_get_lp_fee_reserves_balance_mut<T>();
+    coin::put(lp_fee_reserves, purchase_coin.split(lp_fee_value, ctx));
+
+    // Transfer referrer fee coin to referrer otherwise to lp fee reserves
+    let referrer_coin = purchase_coin.split(referrer_fee_value, ctx);
+    if (referrer.is_some()) {
+        let referrer_address = referrer.destroy_some();
+        transfer::public_transfer(referrer_coin, referrer_address);
+    } else {
+        coin::put(lp_fee_reserves, referrer_coin);
+    };
+
+    assert!(
+        ticket_cost > lp_fee_value + protocol_fee_value + referrer_fee_value,
+        ErrorExcessiveFeeCharged,
+    );
+    let ticket_cost_after_fees =
+        ticket_cost - lp_fee_value - protocol_fee_value - referrer_fee_value;
     let treasury_reserves = self.inner_get_treasury_reserves_balance_mut<T>();
     coin::put(treasury_reserves, purchase_coin.split(ticket_cost_after_fees, ctx));
 
@@ -381,8 +417,7 @@ fun inner_cal_fee_for_risk_ratio(
     total_reserves_value: u64,
     total_risk_ratio_bps: u64,
 ): u64 {
-    let fee_for_pool = risk_ratio_bps * total_reserves_value / total_risk_ratio_bps;
-    fee_for_pool
+    mul_div(risk_ratio_bps, total_reserves_value, total_risk_ratio_bps)
 }
 
 fun inner_get_treasury_reserves_balance_value<T>(self: &PrizePool): u64 {
@@ -431,13 +466,15 @@ fun inner_get_protocol_fee_reserves_balance_mut<T>(self: &mut PrizePool): &mut B
 }
 
 fun inner_get_lp_fee_amount(self: &PrizePool, purchased_value: u64): u64 {
-    let lp_fee_amount = purchased_value * self.lp_fee_bps / 10000;
-    lp_fee_amount
+    mul_div(purchased_value, self.lp_fee_bps, 10000)
 }
 
 fun inner_get_protocol_fee_amount(self: &PrizePool, purchased_value: u64): u64 {
-    let protocol_fee_amount = purchased_value * self.protocol_fee_bps / 10000;
-    protocol_fee_amount
+    mul_div(purchased_value, self.protocol_fee_bps, 10000)
+}
+
+fun inner_get_referrer_fee_amount(self: &PrizePool, purchased_value: u64): u64 {
+    mul_div(purchased_value, self.referrer_fee_bps, 10000)
 }
 
 fun inner_cal_lp_ticket(self: &PrizePool, prize_reserves_value: u64): u64 {

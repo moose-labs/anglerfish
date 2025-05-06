@@ -560,12 +560,13 @@ fun test_purchase_ticket() {
         &mut round,
         &phase_info,
         coin,
+        option::none(),
         ts::ctx(&mut scenario),
     );
     assert_eq(remaining_coin.value(), 0); // 3 tickets * 1000 = 3000
     assert_eq(round::get_player_tickets(&round, USER1), 3);
-    assert_eq(prize_pool::get_treasury_reserves_value<TEST_COIN>(&prize_pool), 2100); // 3000 * (10000 - 2500 - 500) / 10000
-    assert_eq(prize_pool::get_lp_fee_reserves_value<TEST_COIN>(&prize_pool), 750); // 3000 * 2500 / 10000
+    assert_eq(prize_pool::get_treasury_reserves_value<TEST_COIN>(&prize_pool), 1800); // 3000 * (10000 - 2500 - 500 - 1000) / 10000
+    assert_eq(prize_pool::get_lp_fee_reserves_value<TEST_COIN>(&prize_pool), 1050); // (3000 * 2500 / 10000) + 300 (no referrer)
     assert_eq(prize_pool::get_protocol_fee_reserves_value<TEST_COIN>(&prize_pool), 150); // 3000 * 500 / 10000
 
     ts::next_tx(&mut scenario, ADMIN);
@@ -621,6 +622,7 @@ fun test_purchase_ticket_zero() {
         &mut round,
         &phase_info,
         coin,
+        option::none(),
         ts::ctx(&mut scenario),
     );
 
@@ -702,6 +704,7 @@ fun test_full_lottery_cycle() {
         &mut round,
         &phase_info,
         purchase_coin,
+        option::none(),
         ts::ctx(&mut scenario),
     );
     assert_eq(change_coin.value(), 0);
