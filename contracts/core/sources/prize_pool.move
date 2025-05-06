@@ -100,7 +100,7 @@ public fun set_lp_fee_bps(
     lp_fee_bps: u64,
 ) {
     phase_info.assert_settling_phase();
-    assert!(lp_fee_bps < 6000, ErrorLpFeeAmountTooHigh);
+    assert!(lp_fee_bps <= 6000, ErrorLpFeeAmountTooHigh);
     prize_pool.lp_fee_bps = lp_fee_bps;
 }
 
@@ -112,7 +112,7 @@ public fun set_protocol_fee_bps(
     protocol_fee_bps: u64,
 ) {
     phase_info.assert_settling_phase();
-    assert!(protocol_fee_bps < 3000, ErrorProtocolFeeAmountTooHigh);
+    assert!(protocol_fee_bps <= 3000, ErrorProtocolFeeAmountTooHigh);
     prize_pool.protocol_fee_bps = protocol_fee_bps;
 }
 
@@ -124,7 +124,7 @@ public fun set_referrer_fee_bps(
     referrer_fee_bps: u64,
 ) {
     phase_info.assert_settling_phase();
-    assert!(referrer_fee_bps < 3000, ErrorReferrerFeeAmountTooHigh);
+    assert!(referrer_fee_bps <= 1000, ErrorReferrerFeeAmountTooHigh);
     prize_pool.referrer_fee_bps = referrer_fee_bps;
 }
 
@@ -479,7 +479,7 @@ fun inner_get_referrer_fee_amount(self: &PrizePool, purchased_value: u64): u64 {
 
 fun inner_cal_lp_ticket(self: &PrizePool, prize_reserves_value: u64): u64 {
     let lp_tickets = prize_reserves_value / self.price_per_ticket;
-    let total_fee_bps = self.lp_fee_bps + self.protocol_fee_bps;
+    let total_fee_bps = self.lp_fee_bps + self.protocol_fee_bps + self.referrer_fee_bps;
     let lp_tickets_with_fee = calculate_total_ticket_with_fees(
         lp_tickets,
         total_fee_bps,

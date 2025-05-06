@@ -697,7 +697,7 @@ fun test_full_lottery_cycle() {
     ts::next_tx(&mut scenario, USER1);
     let round_id = round::get_round_id(&round_registry, 1).extract();
     let mut round = ts::take_shared_by_id<Round>(&scenario, round_id);
-    let purchase_coin = coin::mint_for_testing<TEST_COIN>(3000, ts::ctx(&mut scenario));
+    let purchase_coin = coin::mint_for_testing<TEST_COIN>(10000, ts::ctx(&mut scenario));
     let change_coin = prize_pool::purchase_ticket<TEST_COIN>(
         &mut prize_pool,
         &round_registry,
@@ -770,7 +770,7 @@ fun test_full_lottery_cycle() {
         &mut prize_pool,
         ts::ctx(&mut scenario),
     );
-    assert_eq(protocol_fee.value(), 150); // 3000 * 500 / 10000
+    assert_eq(protocol_fee.value(), 500); // 10000 * 500 / 10000
 
     clock::destroy_for_testing(clock);
     ts::return_shared(rand);
