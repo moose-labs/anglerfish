@@ -3,6 +3,7 @@ module anglerfish::phase_test;
 
 use anglerfish::base_test_suite::build_base_test_suite;
 use anglerfish::phase::{Self, PhaseInfo, PhaseInfoCap};
+use anglerfish::phase_test_suite::build_phase_test_suite;
 use sui::test_scenario;
 
 const DURATION: u64 = 60;
@@ -17,7 +18,8 @@ const UNAUTHORIZED: address = @0xFFF;
 // cannot initialize with zero duration(s)
 // can initialize with valid duration(s)
 // initial phase must be Settling
-// cannot initialize again
+// cannot initialize twice
+// can update phase durations on Settling phase
 
 #[test]
 #[expected_failure(abort_code = test_scenario::EEmptyInventory)]
@@ -115,6 +117,31 @@ fun test_cannot_initialize_twice() {
         scenario.return_to_sender(phase_info_cap);
     };
 
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+#[test]
+fun test_update_phase_durations_on_settling() {
+    let (mut scenario, clock, mut phase_info) = build_phase_test_suite(AUTHORITY);
+
+    scenario.next_tx(AUTHORITY);
+    {
+        let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
+
+        phase_info_cap.update_phase_durations(&mut phase_info, 1, 1);
+
+        // phase should still be Settling
+        phase_info.assert_settling_phase();
+
+        let (liquidity_providing_duration, ticketing_duration) = phase_info.get_phase_durations();
+        assert!(liquidity_providing_duration == 1);
+        assert!(ticketing_duration == 1);
+
+        scenario.return_to_sender(phase_info_cap);
+    };
+
+    test_scenario::return_shared(phase_info);
     clock.destroy_for_testing();
     scenario.end();
 }

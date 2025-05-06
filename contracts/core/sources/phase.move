@@ -30,6 +30,11 @@ public struct PhaseInfoCapCreated has copy, drop {
     cap_id: ID,
 }
 
+public struct PhaseInfoDurationUpdated has copy, drop {
+    liquidity_providing_duration: u64,
+    ticketing_duration: u64,
+}
+
 /// Represents the current phase of the lottery system.
 public enum Phase has copy, drop, store {
     /// The system is not yet initialized.
@@ -98,13 +103,29 @@ fun init(witness: PHASE, ctx: &mut TxContext) {
 
 /// Initializes PhaseInfo with durations and sets Settling phase to allow prize_pool to start a new round.
 public fun initialize(
-    _self: &PhaseInfoCap,
+    self: &PhaseInfoCap,
     phase_info: &mut PhaseInfo,
     liquidity_providing_duration: u64,
     ticketing_duration: u64,
     _: &mut TxContext,
 ) {
     assert!(phase_info.current_phase == Phase::Uninitialized, ErrorAlreadyInitialized);
+
+    // Set the initial phase to Settling
+    phase_info.current_phase = Phase::Settling;
+    phase_info.current_round_number = 0;
+
+    self.update_phase_durations(phase_info, liquidity_providing_duration, ticketing_duration)
+}
+
+public fun update_phase_durations(
+    _self: &PhaseInfoCap,
+    phase_info: &mut PhaseInfo,
+    liquidity_providing_duration: u64,
+    ticketing_duration: u64,
+) {
+    phase_info.assert_settling_phase();
+
     let phase_durations = PhaseDurations {
         liquidity_providing_duration,
         ticketing_duration,
@@ -113,9 +134,10 @@ public fun initialize(
     phase_durations.assert_durations();
     phase_info.durations = phase_durations;
 
-    // Set the initial phase to Settling
-    phase_info.current_phase = Phase::Settling;
-    phase_info.current_round_number = 0;
+    emit(PhaseInfoDurationUpdated {
+        liquidity_providing_duration,
+        ticketing_duration,
+    });
 }
 
 /// Advances phase from LiquidityProviding or Ticketing (entry point).
@@ -173,6 +195,11 @@ public fun get_current_round_number(self: &PhaseInfo): u64 {
 /// Gets the timestamp of the current phase in seconds.
 public fun get_current_phase_at(self: &PhaseInfo): u64 {
     self.current_phase_at
+}
+
+/// Gets the durations of each phase in seconds.
+public fun get_phase_durations(self: &PhaseInfo): (u64, u64) {
+    (self.durations.liquidity_providing_duration, self.durations.ticketing_duration)
 }
 
 /// Gets the timestamp of the last Drawing phase.
