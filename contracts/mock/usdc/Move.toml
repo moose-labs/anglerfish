@@ -1,0 +1,7 @@
+[package]
+name = "usdc"
+edition = "2024.beta"
+
+[dependencies]
+[addresses]
+usdc = "0x0"
