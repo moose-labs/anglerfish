@@ -1,6 +1,7 @@
 #[test_only]
 module anglerfish::base_test_suite;
 
+use anglerfish::iterator::init_for_testing as init_iterator_for_testing;
 use anglerfish::lounge::init_for_testing as init_lounge_for_testing;
 use anglerfish::phase::init_for_testing as init_phase_info_for_testing;
 use anglerfish::pool::init_for_testing as init_pool_for_testing;
@@ -23,6 +24,7 @@ public fun build_base_test_suite(authority: address): (Scenario, Clock) {
 
     scenario.next_tx(authority);
     {
+        init_iterator_for_testing(scenario.ctx());
         init_phase_info_for_testing(scenario.ctx());
         init_pool_for_testing(scenario.ctx());
         init_lounge_for_testing(scenario.ctx());

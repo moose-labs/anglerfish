@@ -1,6 +1,7 @@
 /// Manages lottery rounds, ticket purchases, and winner selection.
 module anglerfish::round;
 
+use anglerfish::iterator::IteratorCap;
 use sui::clock::Clock;
 use sui::event::emit;
 use sui::table::{Self, Table};
@@ -88,7 +89,7 @@ public fun contains(round_registry: &RoundRegistry, round_number: u64): bool {
 
 /// Creates a new shared Round and registers it in RoundRegistry.
 public(package) fun create_round(
-    _self: &RoundRegistryCap,
+    _iter_cap: &IteratorCap,
     round_registry: &mut RoundRegistry,
     round_number: u64,
     ctx: &mut TxContext,

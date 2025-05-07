@@ -2,6 +2,7 @@
 module anglerfish::phase_test;
 
 use anglerfish::base_test_suite::build_base_test_suite;
+use anglerfish::iterator::IteratorCap;
 use anglerfish::phase::{Self, PhaseInfo, PhaseInfoCap};
 use anglerfish::phase_test_suite::build_phase_test_suite;
 use sui::test_scenario;
@@ -45,12 +46,12 @@ fun test_cannot_next_phase_when_not_initialized() {
     scenario.next_tx(AUTHORITY);
     {
         let mut phase_info = scenario.take_shared<PhaseInfo>();
-        let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
+        let iter_cap = scenario.take_from_sender<IteratorCap>();
 
-        phase_info_cap.next(&mut phase_info, &clock, scenario.ctx());
+        phase::next(&iter_cap, &mut phase_info, &clock, scenario.ctx());
 
         test_scenario::return_shared(phase_info);
-        scenario.return_to_sender(phase_info_cap)
+        scenario.return_to_sender(iter_cap)
     };
 
     clock.destroy_for_testing();
@@ -168,6 +169,7 @@ fun test_change_phase_until_no_entry() {
     {
         let mut phase_info = scenario.take_shared<PhaseInfo>();
         let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
+        let iter_cap = scenario.take_from_sender<IteratorCap>();
 
         phase_info_cap.initialize(&mut phase_info, DURATION, DURATION, scenario.ctx());
         phase_info.assert_settling_phase();
@@ -175,7 +177,7 @@ fun test_change_phase_until_no_entry() {
         assert!(phase_info.is_current_phase_completed(&clock));
 
         // can change phase (Settling -> LiquidityProviding)
-        phase_info_cap.next_entry(&mut phase_info, &clock, scenario.ctx());
+        phase::next_entry(&iter_cap, &mut phase_info, &clock, scenario.ctx());
         phase_info.assert_liquidity_providing_phase();
 
         // should bump round on liquidity providing phase
@@ -188,7 +190,7 @@ fun test_change_phase_until_no_entry() {
         clock.increment_for_testing(DURATION_MS);
 
         // can change phase (LiquidityProviding -> Ticketing)
-        phase_info_cap.next_entry(&mut phase_info, &clock, scenario.ctx());
+        phase::next_entry(&iter_cap, &mut phase_info, &clock, scenario.ctx());
         phase_info.assert_ticketing_phase();
         assert!(phase_info.get_current_round_number() == 1);
 
@@ -199,15 +201,16 @@ fun test_change_phase_until_no_entry() {
         clock.increment_for_testing(DURATION_MS);
 
         // can change phase (Ticketing -> Drawing)
-        phase_info_cap.next_entry(&mut phase_info, &clock, scenario.ctx());
+        phase::next_entry(&iter_cap, &mut phase_info, &clock, scenario.ctx());
         phase_info.assert_drawing_phase();
         assert!(phase_info.get_current_round_number() == 1);
 
         // This should revert with ErrorCurrentPhaseIsNotAllowedIterateFromEntry
         // can instantly change phase on drawed phase (Drawing -> Distributing)
-        phase_info_cap.next_entry(&mut phase_info, &clock, scenario.ctx());
+        phase::next_entry(&iter_cap, &mut phase_info, &clock, scenario.ctx());
 
         test_scenario::return_shared(phase_info);
+        scenario.return_to_sender(iter_cap);
         scenario.return_to_sender(phase_info_cap);
     };
 

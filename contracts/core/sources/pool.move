@@ -1,6 +1,7 @@
 /// Manages liquidity pools with varying risk ratios for lottery reserves.
 module anglerfish::pool;
 
+use anglerfish::iterator::IteratorCap;
 use anglerfish::phase::PhaseInfo;
 use math::u64::mul_div;
 use sui::bag::{Self, Bag};
@@ -261,7 +262,7 @@ public(package) fun deposit_fee<T>(self: &mut Pool<T>, fee_coin: Coin<T>) {
 
 /// Withdraws prize reserves from a pool.
 public(package) fun withdraw_prize<T>(
-    _self: &PoolCap,
+    _iter_cap: &IteratorCap,
     pool_registry: &mut PoolRegistry,
     risk_ratio_bps: u64,
     phase_info: &PhaseInfo,

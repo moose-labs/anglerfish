@@ -1,12 +1,13 @@
 #[test_only]
 module anglerfish::pool_test_suite;
 
+use anglerfish::iterator::IteratorCap;
 use anglerfish::lounge::LoungeRegistry;
 use anglerfish::lounge_test_suite::{build_lounge_test_suite, build_initialized_lounge_test_suite};
-use anglerfish::phase::{PhaseInfo, PhaseInfoCap};
+use anglerfish::phase::{Self, PhaseInfo};
 use anglerfish::pool::{PoolCap, PoolRegistry};
-use anglerfish::prize_pool::{Self, PrizePoolCap, PrizePool};
-use anglerfish::round::{RoundRegistryCap, RoundRegistry};
+use anglerfish::prize_pool::{Self, PrizePool};
+use anglerfish::round::RoundRegistry;
 use sui::balance::create_for_testing as create_balance_for_testing;
 use sui::clock::Clock;
 use sui::sui::SUI;
@@ -76,15 +77,11 @@ public fun build_liquidity_providing_phase_pool_test_suite(
     // Phase: Settling -> Liquidity Providing
     scenario.next_tx(authority);
     {
-        let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
-        let round_registry_cap = scenario.take_from_sender<RoundRegistryCap>();
-        let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
+        let iter_cap = scenario.take_from_sender<IteratorCap>();
         let mut round_registry = scenario.take_shared<RoundRegistry>();
 
         prize_pool::start_new_round(
-            &prize_pool_cap,
-            &round_registry_cap,
-            &phase_info_cap,
+            &iter_cap,
             &mut phase_info,
             &mut round_registry,
             &prize_pool,
@@ -96,9 +93,7 @@ public fun build_liquidity_providing_phase_pool_test_suite(
         phase_info.assert_liquidity_providing_phase();
 
         test_scenario::return_shared(round_registry);
-        scenario.return_to_sender(phase_info_cap);
-        scenario.return_to_sender(prize_pool_cap);
-        scenario.return_to_sender(round_registry_cap);
+        scenario.return_to_sender(iter_cap);
     };
 
     (scenario, clock, phase_info, prize_pool, lounge_registry, pool_registry)
@@ -173,14 +168,14 @@ public fun build_ticketing_phase_with_liquidity_pool_test_suite(
     // Phase: Liquidity Providing -> Ticketing
     scenario.next_tx(authority);
     {
-        let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
+        let iter_cap = scenario.take_from_sender<IteratorCap>();
 
         clock.increment_for_testing(PHASE_DURATION);
 
-        phase_info_cap.next_entry(&mut phase_info, &clock, scenario.ctx());
+        phase::next_entry(&iter_cap, &mut phase_info, &clock, scenario.ctx());
         phase_info.assert_ticketing_phase();
 
-        scenario.return_to_sender(phase_info_cap);
+        scenario.return_to_sender(iter_cap);
     };
 
     (scenario, clock, phase_info, prize_pool, lounge_registry, pool_registry)
@@ -205,14 +200,14 @@ public fun build_ticketing_phase_no_liquidity_pool_test_suite(
     // Phase: Liquidity Providing -> Ticketing
     scenario.next_tx(authority);
     {
-        let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
+        let iter_cap = scenario.take_from_sender<IteratorCap>();
 
         clock.increment_for_testing(PHASE_DURATION);
 
-        phase_info_cap.next_entry(&mut phase_info, &clock, scenario.ctx());
+        phase::next_entry(&iter_cap, &mut phase_info, &clock, scenario.ctx());
         phase_info.assert_ticketing_phase();
 
-        scenario.return_to_sender(phase_info_cap);
+        scenario.return_to_sender(iter_cap);
     };
 
     (scenario, clock, phase_info, prize_pool, lounge_registry, pool_registry)

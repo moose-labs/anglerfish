@@ -1,6 +1,7 @@
 /// Manages prize lounges for lottery winners to claim reserves.
 module anglerfish::lounge;
 
+use anglerfish::iterator::IteratorCap;
 use sui::balance::Balance;
 use sui::coin::{Self, Coin, from_balance};
 use sui::event::emit;
@@ -82,7 +83,7 @@ fun init(witness: LOUNGE, ctx: &mut TxContext) {
 
 /// Creates a Lounge for a winner to claim prizes.
 public(package) fun create_lounge<T>(
-    _self: &LoungeCap,
+    _iter_cap: &IteratorCap,
     lounge_registry: &mut LoungeRegistry,
     lounge_number: u64,
     recipient: address,
