@@ -152,7 +152,7 @@ public fun get_total_prize_reserves_value<T>(self: &PoolRegistry): u64 {
 }
 
 /// Gets the total risk ratio across all pools.
-public fun get_total_risk_ratio_bps(self: &PoolRegistry): u64 {
+public fun get_nonzero_shares_total_risk_ratio_bps<T>(self: &PoolRegistry): u64 {
     let pool_risk_ratios = self.pool_ids.keys();
     let len = pool_risk_ratios.length();
     let mut total_risk_ratio_bps = 0;
@@ -160,8 +160,10 @@ public fun get_total_risk_ratio_bps(self: &PoolRegistry): u64 {
 
     while (i < len) {
         let risk_ratio_bps = *vector::borrow(&pool_risk_ratios, i);
-        total_risk_ratio_bps = total_risk_ratio_bps + risk_ratio_bps;
-
+        let pool = self.get_pool_by_risk_ratio<T>(risk_ratio_bps);
+        if (pool.get_total_shares() != 0) {
+            total_risk_ratio_bps = total_risk_ratio_bps + risk_ratio_bps;
+        };
         i = i + 1;
     };
 

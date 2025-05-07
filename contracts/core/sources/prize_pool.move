@@ -389,21 +389,23 @@ fun inner_distribute_fee_to_pools<T>(
 ) {
     let reserves_value = reserves.value();
 
-    let total_risk_ratio_bps = pool_registry.get_total_risk_ratio_bps();
+    let total_risk_ratio_bps = pool_registry.get_nonzero_shares_total_risk_ratio_bps<T>();
     let risk_ratios = pool_registry.get_pool_risk_ratios();
     let risk_ratios_len = risk_ratios.length();
 
     let mut i = 0;
     while (i < risk_ratios_len) {
         let risk_ratio_bps = risk_ratios[i];
-        let fee_for_pool = inner_cal_fee_for_risk_ratio(
-            risk_ratio_bps,
-            reserves_value,
-            total_risk_ratio_bps,
-        );
-        let fee_coin = from_balance(reserves.split(fee_for_pool), ctx);
         let pool = pool_registry.get_pool_by_risk_ratio_mut<T>(risk_ratio_bps);
-        pool.deposit_fee(fee_coin);
+        if (pool.get_total_shares() > 0) {
+            let fee_for_pool = inner_cal_fee_for_risk_ratio(
+                risk_ratio_bps,
+                reserves_value,
+                total_risk_ratio_bps,
+            );
+            let fee_coin = from_balance(reserves.split(fee_for_pool), ctx);
+            pool.deposit_fee(fee_coin);
+        };
         i = i + 1;
     };
 }

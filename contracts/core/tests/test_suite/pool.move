@@ -16,6 +16,7 @@ use sui::test_scenario::{Self, Scenario};
 const PHASE_DURATION: u64 = 60;
 const TEST_POOL_1_RISK: u64 = 2000;
 const TEST_POOL_2_RISK: u64 = 5000;
+const TEST_POOL_3_RISK: u64 = 10000;
 
 /// build_pool_test_suite
 public fun build_pool_test_suite(
@@ -62,6 +63,12 @@ public fun build_liquidity_providing_phase_pool_test_suite(
             TEST_POOL_2_RISK,
             scenario.ctx(),
         );
+        pool_cap.create_pool<SUI>(
+            &mut pool_registry,
+            &phase_info,
+            TEST_POOL_3_RISK,
+            scenario.ctx(),
+        );
 
         pool_cap.set_deposit_enabled<SUI>(&mut pool_registry, TEST_POOL_1_RISK, true);
         let pool = pool_registry.get_pool_by_risk_ratio<SUI>(TEST_POOL_1_RISK);
@@ -69,6 +76,10 @@ public fun build_liquidity_providing_phase_pool_test_suite(
 
         pool_cap.set_deposit_enabled<SUI>(&mut pool_registry, TEST_POOL_2_RISK, true);
         let pool = pool_registry.get_pool_by_risk_ratio<SUI>(TEST_POOL_2_RISK);
+        pool.assert_deposit_enabled();
+
+        pool_cap.set_deposit_enabled<SUI>(&mut pool_registry, TEST_POOL_3_RISK, true);
+        let pool = pool_registry.get_pool_by_risk_ratio<SUI>(TEST_POOL_3_RISK);
         pool.assert_deposit_enabled();
 
         scenario.return_to_sender(pool_cap);
@@ -122,8 +133,11 @@ public fun build_ticketing_phase_with_liquidity_pool_test_suite(
     // User 2:
     // - Deposit 1_000_000 into 20% pool (prize = 200_000)
     // - Deposit 2_000_000 into 50% pool (prize = 1_000_000)
+    //
     // = Total liquidity is 6_000_000
     // = Total prize is 2_400_000
+    // ! No liquidity in 100% pool
+
     let user1: address = @0x001;
     let user2: address = @0x002;
 
