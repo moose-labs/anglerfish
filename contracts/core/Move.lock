@@ -37,13 +37,13 @@ flavor = "sui"
 [env]
 
 [env.localnet]
-chain-id = "3c2e785d"
-original-published-id = "0x5a9904b58d7e2827d7ecc8ffd28ae2d4790b5e9b65cce1f47c4bc9aa780480ec"
-latest-published-id = "0x5a9904b58d7e2827d7ecc8ffd28ae2d4790b5e9b65cce1f47c4bc9aa780480ec"
+chain-id = "d9bce0c0"
+original-published-id = "0xa065f3bf65ed81a4016ca9b8f2761f79ea70911dcebff37d601b0b4deca469f0"
+latest-published-id = "0xa065f3bf65ed81a4016ca9b8f2761f79ea70911dcebff37d601b0b4deca469f0"
 published-version = "1"
 
 [env.testnet]
 chain-id = "4c78adac"
-original-published-id = "0x8abd132309912a78e47bb8669bf2828a8a15b210dd9ba5ca4ffeb50886d6929c"
-latest-published-id = "0x7c6fe4594c96cf1b967312706168bfbce8193af23f6faaa7bb2c8daec5cb6351"
-published-version = "2"
+original-published-id = "0x8b972d167cd3de93246936036b77a4c8b70008dc3b7a4b2bb35e1f1a0596df60"
+latest-published-id = "0x8b972d167cd3de93246936036b77a4c8b70008dc3b7a4b2bb35e1f1a0596df60"
+published-version = "1"
