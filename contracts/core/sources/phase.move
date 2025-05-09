@@ -1,6 +1,7 @@
 /// Manages lottery phase lifecycle and round tracking.
 module anglerfish::phase;
 
+use anglerfish::iterator::IteratorCap;
 use sui::clock::Clock;
 use sui::event::emit;
 
@@ -142,18 +143,18 @@ public fun update_phase_durations(
 
 /// Advances phase from LiquidityProviding or Ticketing (entry point).
 public fun next_entry(
-    self: &PhaseInfoCap,
+    iter_cap: &IteratorCap,
     phase_info: &mut PhaseInfo,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     assert!(phase_info.is_allowed_next_from_entry(), ErrorCurrentPhaseNotAllowedIterateFromEntry);
-    self.next(phase_info, clock, ctx);
+    next(iter_cap, phase_info, clock, ctx);
 }
 
 /// Advances to the next phase, updating timestamps and round numbers.
 public(package) fun next(
-    self: &PhaseInfoCap,
+    iter_cap: &IteratorCap,
     phase_info: &mut PhaseInfo,
     clock: &Clock,
     _: &mut TxContext,
@@ -164,11 +165,11 @@ public(package) fun next(
     phase_info.current_phase = phase_info.next_phase();
     phase_info.current_phase_at = clock.timestamp_ms();
 
-    self.bump_round(phase_info);
+    bump_round(iter_cap, phase_info);
 }
 
 public(package) fun set_last_drawing_timestamp_ms(
-    _self: &PhaseInfoCap,
+    _iter_cap: &IteratorCap,
     phase_info: &mut PhaseInfo,
     clock: &Clock,
 ) {
@@ -245,7 +246,7 @@ public fun estimate_current_phase_completed_at(self: &PhaseInfo): u64 {
 
 /// Private functions
 
-fun bump_round(_self: &PhaseInfoCap, phase_info: &mut PhaseInfo) {
+fun bump_round(_self: &IteratorCap, phase_info: &mut PhaseInfo) {
     if (phase_info.current_phase == Phase::LiquidityProviding) {
         phase_info.current_round_number = phase_info.current_round_number + 1;
     }

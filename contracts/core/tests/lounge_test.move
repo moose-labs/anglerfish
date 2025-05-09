@@ -1,6 +1,7 @@
 #[test_only]
 module anglerfish::lounge_pool_test;
 
+use anglerfish::iterator::IteratorCap;
 use anglerfish::lounge::{Self, LoungeCap, Lounge};
 use anglerfish::lounge_test_suite::build_lounge_test_suite;
 use sui::balance::{Self, create_for_testing as create_balance_for_testing};
@@ -60,15 +61,16 @@ fun test_cannot_create_lounge_with_0x0_recipient() {
     scenario.next_tx(AUTHORITY);
     {
         let prize_balance = balance::zero<SUI>();
-        let lounge_cap = scenario.take_from_sender<LoungeCap>();
-        let _ = lounge_cap.create_lounge<SUI>(
+        let iter_cap = scenario.take_from_sender<IteratorCap>();
+        let _ = lounge::create_lounge<SUI>(
+            &iter_cap,
             &mut lounge_registry,
             0,
             @0x0,
             from_balance(prize_balance, scenario.ctx()),
             scenario.ctx(),
         );
-        scenario.return_to_sender(lounge_cap);
+        scenario.return_to_sender(iter_cap);
     };
 
     test_scenario::return_shared(phase_info);
@@ -94,29 +96,31 @@ fun test_create_lounge_with_existing_lounge_number() {
     scenario.next_tx(AUTHORITY);
     {
         let prize_balance = balance::zero<SUI>();
-        let lounge_cap = scenario.take_from_sender<LoungeCap>();
-        let _ = lounge_cap.create_lounge<SUI>(
+        let iter_cap = scenario.take_from_sender<IteratorCap>();
+        let _ = lounge::create_lounge<SUI>(
+            &iter_cap,
             &mut lounge_registry,
             0,
             @0x1,
             from_balance(prize_balance, scenario.ctx()),
             scenario.ctx(),
         );
-        scenario.return_to_sender(lounge_cap);
+        scenario.return_to_sender(iter_cap);
     };
 
     scenario.next_tx(AUTHORITY);
     {
         let prize_balance = balance::zero<SUI>();
-        let lounge_cap = scenario.take_from_sender<LoungeCap>();
-        let _ = lounge_cap.create_lounge<SUI>(
+        let iter_cap = scenario.take_from_sender<IteratorCap>();
+        let _ = lounge::create_lounge<SUI>(
+            &iter_cap,
             &mut lounge_registry,
             0,
             @0x1,
             from_balance(prize_balance, scenario.ctx()),
             scenario.ctx(),
         );
-        scenario.return_to_sender(lounge_cap);
+        scenario.return_to_sender(iter_cap);
     };
 
     test_scenario::return_shared(phase_info);
@@ -141,15 +145,16 @@ fun test_create_lounge_by_capability() {
     scenario.next_tx(AUTHORITY);
     {
         let prize_balance = balance::zero<SUI>();
-        let lounge_cap = scenario.take_from_sender<LoungeCap>();
-        let _ = lounge_cap.create_lounge<SUI>(
+        let iter_cap = scenario.take_from_sender<IteratorCap>();
+        let _ = lounge::create_lounge<SUI>(
+            &iter_cap,
             &mut lounge_registry,
             0,
             @0x1,
             from_balance(prize_balance, scenario.ctx()),
             scenario.ctx(),
         );
-        scenario.return_to_sender(lounge_cap);
+        scenario.return_to_sender(iter_cap);
     };
 
     test_scenario::return_shared(phase_info);
@@ -184,15 +189,16 @@ fun test_lounge_cannot_claim_by_unauthorized() {
     scenario.next_tx(AUTHORITY);
     let lounge_id = {
         let prize_balance = create_balance_for_testing<SUI>(100);
-        let lounge_cap = scenario.take_from_sender<LoungeCap>();
-        let lounge_id = lounge_cap.create_lounge<SUI>(
+        let iter_cap = scenario.take_from_sender<IteratorCap>();
+        let lounge_id = lounge::create_lounge<SUI>(
+            &iter_cap,
             &mut lounge_registry,
             0,
             recipient,
             from_balance(prize_balance, scenario.ctx()),
             scenario.ctx(),
         );
-        scenario.return_to_sender(lounge_cap);
+        scenario.return_to_sender(iter_cap);
         lounge_id
     };
 
@@ -231,15 +237,16 @@ fun test_lounge_can_claim_by_recipient() {
     scenario.next_tx(AUTHORITY);
     let lounge_id = {
         let prize_balance = create_balance_for_testing<SUI>(0);
-        let lounge_cap = scenario.take_from_sender<LoungeCap>();
-        let lounge_id = lounge_cap.create_lounge<SUI>(
+        let iter_cap = scenario.take_from_sender<IteratorCap>();
+        let lounge_id = lounge::create_lounge<SUI>(
+            &iter_cap,
             &mut lounge_registry,
             0,
             recipient,
             from_balance(prize_balance, scenario.ctx()),
             scenario.ctx(),
         );
-        scenario.return_to_sender(lounge_cap);
+        scenario.return_to_sender(iter_cap);
 
         lounge_id
     };

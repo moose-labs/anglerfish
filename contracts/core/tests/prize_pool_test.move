@@ -1,9 +1,9 @@
 #[test_only]
 module anglerfish::prize_pool_test;
 
-use anglerfish::lounge::{LoungeCap, Lounge};
-use anglerfish::phase::{Self, PhaseInfoCap};
-use anglerfish::pool::PoolCap;
+use anglerfish::iterator::IteratorCap;
+use anglerfish::lounge::Lounge;
+use anglerfish::phase;
 use anglerfish::pool_test_suite::{
     build_liquidity_providing_phase_pool_test_suite,
     build_ticketing_phase_no_liquidity_pool_test_suite,
@@ -66,10 +66,10 @@ fun test_cannot_purchase_ticket_outside_ticketing_phase() {
     // Forward phase to drawing phase to test
     scenario.next_tx(AUTHORITY);
     {
-        let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
+        let iter_cap = scenario.take_from_sender<IteratorCap>();
         clock.increment_for_testing(PHASE_DURATION);
-        phase_info_cap.next(&mut phase_info, &clock, scenario.ctx());
-        scenario.return_to_sender(phase_info_cap);
+        phase::next(&iter_cap, &mut phase_info, &clock, scenario.ctx());
+        scenario.return_to_sender(iter_cap);
     };
 
     scenario.next_tx(USER1);
@@ -423,12 +423,12 @@ fun test_draw_on_no_liquidity() {
     // iterate to Drawing
     scenario.next_tx(AUTHORITY);
     {
-        let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
+        let iter_cap = scenario.take_from_sender<IteratorCap>();
 
         clock.increment_for_testing(PHASE_DURATION);
-        phase_info_cap.next(&mut phase_info, &clock, scenario.ctx());
+        phase::next(&iter_cap, &mut phase_info, &clock, scenario.ctx());
 
-        scenario.return_to_sender(phase_info_cap);
+        scenario.return_to_sender(iter_cap);
     };
 
     // Update randomness state
@@ -447,15 +447,14 @@ fun test_draw_on_no_liquidity() {
     scenario.next_tx(AUTHORITY);
     {
         let random = scenario.take_shared<Random>();
-        let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
-        let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
+        let iter_cap = scenario.take_from_sender<IteratorCap>();
         let round_number = phase_info.get_current_round_number();
         let round_registry = scenario.take_shared<RoundRegistry>();
         let round_id = round_registry.get_round_id(round_number).extract();
         let mut round = scenario.take_shared_by_id<Round>(round_id);
 
-        prize_pool_cap.draw<SUI>(
-            &phase_info_cap,
+        prize_pool::draw<SUI>(
+            &iter_cap,
             &prize_pool,
             &mut phase_info,
             &pool_registry,
@@ -469,17 +468,12 @@ fun test_draw_on_no_liquidity() {
         // should automatically move from Drawing to Distributing phase
         phase_info.assert_distributing_phase();
 
-        let pool_cap = scenario.take_from_sender<PoolCap>();
-        let lounge_cap = scenario.take_from_sender<LoungeCap>();
-
         let prize_reserves = prize_pool.get_total_prize_reserves_value<SUI>(&pool_registry);
         assert!(round.get_winner().is_some());
         assert!(prize_reserves == 0); // proof of no liquidity
 
-        prize_pool_cap.distribute<SUI>(
-            &pool_cap,
-            &lounge_cap,
-            &phase_info_cap,
+        prize_pool::distribute<SUI>(
+            &iter_cap,
             &mut phase_info,
             &mut prize_pool,
             &mut pool_registry,
@@ -493,11 +487,7 @@ fun test_draw_on_no_liquidity() {
         // should automatically move from Distributing phase to Settling phase
         phase_info.assert_settling_phase();
 
-        scenario.return_to_sender(pool_cap);
-        scenario.return_to_sender(lounge_cap);
-        scenario.return_to_sender(phase_info_cap);
-
-        scenario.return_to_sender(prize_pool_cap);
+        scenario.return_to_sender(iter_cap);
         test_scenario::return_shared(round);
         test_scenario::return_shared(round_registry);
         test_scenario::return_shared(random);
@@ -585,12 +575,12 @@ fun test_draw_on_no_ticket_purchased() {
     // Forward phase to drawing
     scenario.next_tx(AUTHORITY);
     {
-        let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
+        let iter_cap = scenario.take_from_sender<IteratorCap>();
 
         clock.increment_for_testing(PHASE_DURATION);
-        phase_info_cap.next(&mut phase_info, &clock, scenario.ctx());
+        phase::next(&iter_cap, &mut phase_info, &clock, scenario.ctx());
 
-        scenario.return_to_sender(phase_info_cap);
+        scenario.return_to_sender(iter_cap);
     };
 
     // Update randomness state
@@ -609,15 +599,14 @@ fun test_draw_on_no_ticket_purchased() {
     scenario.next_tx(AUTHORITY);
     {
         let random = scenario.take_shared<Random>();
-        let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
-        let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
+        let iter_cap = scenario.take_from_sender<IteratorCap>();
         let round_number = phase_info.get_current_round_number();
         let round_registry = scenario.take_shared<RoundRegistry>();
         let round_id = round_registry.get_round_id(round_number).extract();
         let mut round = scenario.take_shared_by_id<Round>(round_id);
 
-        prize_pool_cap.draw<SUI>(
-            &phase_info_cap,
+        prize_pool::draw<SUI>(
+            &iter_cap,
             &prize_pool,
             &mut phase_info,
             &pool_registry,
@@ -631,13 +620,8 @@ fun test_draw_on_no_ticket_purchased() {
         // should automatically move from Drawing to Distributing phase
         phase_info.assert_distributing_phase();
 
-        let pool_cap = scenario.take_from_sender<PoolCap>();
-        let lounge_cap = scenario.take_from_sender<LoungeCap>();
-
-        prize_pool_cap.distribute<SUI>(
-            &pool_cap,
-            &lounge_cap,
-            &phase_info_cap,
+        prize_pool::distribute<SUI>(
+            &iter_cap,
             &mut phase_info,
             &mut prize_pool,
             &mut pool_registry,
@@ -651,11 +635,7 @@ fun test_draw_on_no_ticket_purchased() {
         // should automatically move from Distributing phase to Settling phase
         phase_info.assert_settling_phase();
 
-        scenario.return_to_sender(pool_cap);
-        scenario.return_to_sender(lounge_cap);
-        scenario.return_to_sender(phase_info_cap);
-
-        scenario.return_to_sender(prize_pool_cap);
+        scenario.return_to_sender(iter_cap);
         test_scenario::return_shared(random);
         test_scenario::return_shared(round);
         test_scenario::return_shared(round_registry);
@@ -739,10 +719,10 @@ fun test_player_win_scenario() {
     // Forward phase to drawing
     scenario.next_tx(AUTHORITY);
     {
-        let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
+        let iter_cap = scenario.take_from_sender<IteratorCap>();
         clock.increment_for_testing(PHASE_DURATION);
-        phase_info_cap.next(&mut phase_info, &clock, scenario.ctx());
-        scenario.return_to_sender(phase_info_cap);
+        phase::next(&iter_cap, &mut phase_info, &clock, scenario.ctx());
+        scenario.return_to_sender(iter_cap);
     };
 
     // Update randomness state
@@ -761,15 +741,14 @@ fun test_player_win_scenario() {
     scenario.next_tx(AUTHORITY);
     {
         let random = scenario.take_shared<Random>();
-        let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
-        let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
+        let iter_cap = scenario.take_from_sender<IteratorCap>();
         let round_number = phase_info.get_current_round_number();
         let round_registry = scenario.take_shared<RoundRegistry>();
         let round_id = round_registry.get_round_id(round_number).extract();
         let mut round = scenario.take_shared_by_id<Round>(round_id);
 
-        prize_pool_cap.draw<SUI>(
-            &phase_info_cap,
+        prize_pool::draw<SUI>(
+            &iter_cap,
             &prize_pool,
             &mut phase_info,
             &pool_registry,
@@ -782,17 +761,12 @@ fun test_player_win_scenario() {
         // should automatically move from Drawing to Distributing phase
         phase_info.assert_distributing_phase();
 
-        let pool_cap = scenario.take_from_sender<PoolCap>();
-        let lounge_cap = scenario.take_from_sender<LoungeCap>();
-
         let prize_reserves = prize_pool.get_total_prize_reserves_value<SUI>(&pool_registry);
         assert!(prize_reserves == 2400000);
         assert!(round.get_winner().is_some());
 
-        prize_pool_cap.distribute<SUI>(
-            &pool_cap,
-            &lounge_cap,
-            &phase_info_cap,
+        prize_pool::distribute<SUI>(
+            &iter_cap,
             &mut phase_info,
             &mut prize_pool,
             &mut pool_registry,
@@ -806,11 +780,7 @@ fun test_player_win_scenario() {
         // should automatically move from Distributing phase to Settling phase
         phase_info.assert_settling_phase();
 
-        scenario.return_to_sender(pool_cap);
-        scenario.return_to_sender(lounge_cap);
-        scenario.return_to_sender(phase_info_cap);
-
-        scenario.return_to_sender(prize_pool_cap);
+        scenario.return_to_sender(iter_cap);
         test_scenario::return_shared(random);
         test_scenario::return_shared(round);
         test_scenario::return_shared(round_registry);
@@ -953,10 +923,10 @@ fun test_lp_win_scenario() {
     // Forward phase to drawing
     scenario.next_tx(AUTHORITY);
     {
-        let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
+        let iter_cap = scenario.take_from_sender<IteratorCap>();
         clock.increment_for_testing(PHASE_DURATION);
-        phase_info_cap.next(&mut phase_info, &clock, scenario.ctx());
-        scenario.return_to_sender(phase_info_cap);
+        phase::next(&iter_cap, &mut phase_info, &clock, scenario.ctx());
+        scenario.return_to_sender(iter_cap);
     };
 
     // Update randomness state
@@ -975,15 +945,14 @@ fun test_lp_win_scenario() {
     scenario.next_tx(AUTHORITY);
     {
         let random = scenario.take_shared<Random>();
-        let prize_pool_cap = scenario.take_from_sender<PrizePoolCap>();
-        let phase_info_cap = scenario.take_from_sender<PhaseInfoCap>();
+        let iter_cap = scenario.take_from_sender<IteratorCap>();
         let round_number = phase_info.get_current_round_number();
         let round_registry = scenario.take_shared<RoundRegistry>();
         let round_id = round_registry.get_round_id(round_number).extract();
         let mut round = scenario.take_shared_by_id<Round>(round_id);
 
-        prize_pool_cap.draw<SUI>(
-            &phase_info_cap,
+        prize_pool::draw<SUI>(
+            &iter_cap,
             &prize_pool,
             &mut phase_info,
             &pool_registry,
@@ -996,17 +965,12 @@ fun test_lp_win_scenario() {
         // should automatically move from Drawing to Distributing phase
         phase_info.assert_distributing_phase();
 
-        let pool_cap = scenario.take_from_sender<PoolCap>();
-        let lounge_cap = scenario.take_from_sender<LoungeCap>();
-
         let prize_reserves = prize_pool.get_total_prize_reserves_value<SUI>(&pool_registry);
         assert!(round.get_winner().is_none());
         assert!(prize_reserves > 0); // proof of no liquidity
 
-        prize_pool_cap.distribute<SUI>(
-            &pool_cap,
-            &lounge_cap,
-            &phase_info_cap,
+        prize_pool::distribute<SUI>(
+            &iter_cap,
             &mut phase_info,
             &mut prize_pool,
             &mut pool_registry,
@@ -1020,11 +984,7 @@ fun test_lp_win_scenario() {
         // should automatically move from Distributing phase to Settling phase
         phase_info.assert_settling_phase();
 
-        scenario.return_to_sender(pool_cap);
-        scenario.return_to_sender(lounge_cap);
-        scenario.return_to_sender(phase_info_cap);
-
-        scenario.return_to_sender(prize_pool_cap);
+        scenario.return_to_sender(iter_cap);
         test_scenario::return_shared(random);
         test_scenario::return_shared(round);
         test_scenario::return_shared(round_registry);

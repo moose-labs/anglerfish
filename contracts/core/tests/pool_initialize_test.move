@@ -120,8 +120,8 @@ fun test_pool_can_only_created_by_authority() {
             let pool_risk_ratios = pool_registry.get_pool_risk_ratios();
             assert!(pool_risk_ratios.length() == 2);
 
-            let total_risk_ratio_bps = pool_registry.get_total_risk_ratio_bps();
-            assert!(total_risk_ratio_bps == 15000);
+            let total_risk_ratio_bps = pool_registry.get_nonzero_shares_total_risk_ratio_bps<SUI>();
+            assert!(total_risk_ratio_bps == 0); // No shares yet
         };
 
         scenario.return_to_sender(pool_cap);

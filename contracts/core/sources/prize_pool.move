@@ -1,10 +1,11 @@
 /// Manages lottery ticket purchases, prize draws, and distributions.
 module anglerfish::prize_pool;
 
-use anglerfish::lounge::{LoungeCap, LoungeRegistry};
-use anglerfish::phase::{PhaseInfo, PhaseInfoCap};
-use anglerfish::pool::{PoolRegistry, PoolCap};
-use anglerfish::round::{Round, RoundRegistry, RoundRegistryCap};
+use anglerfish::iterator::IteratorCap;
+use anglerfish::lounge::{Self, LoungeRegistry};
+use anglerfish::phase::{Self, PhaseInfo};
+use anglerfish::pool::{Self, PoolRegistry};
+use anglerfish::round::{Self, Round, RoundRegistry};
 use anglerfish::ticket_calculator::calculate_total_ticket_with_fees;
 use math::u64::mul_div;
 use sui::bag::{Self, Bag};
@@ -130,9 +131,7 @@ public fun set_referrer_fee_bps(
 
 /// Starts a new round in Settling phase, advancing to LiquidityProviding.
 public fun start_new_round(
-    _self: &PrizePoolCap,
-    round_registry_cap: &RoundRegistryCap,
-    phase_info_cap: &PhaseInfoCap,
+    iter_cap: &IteratorCap,
     phase_info: &mut PhaseInfo,
     round_registry: &mut RoundRegistry,
     prize_pool: &PrizePool,
@@ -147,7 +146,7 @@ public fun start_new_round(
     let prev_round_number = phase_info.get_current_round_number();
 
     // forward to next phase
-    phase_info_cap.next(phase_info, clock, ctx);
+    phase::next(iter_cap, phase_info, clock, ctx);
 
     let current_round_number = phase_info.get_current_round_number();
 
@@ -155,7 +154,7 @@ public fun start_new_round(
     assert!(current_round_number == prev_round_number + 1, ErrorInvalidRoundNumberSequence);
 
     // Create a new round in RoundRegistry
-    round_registry_cap.create_round(round_registry, current_round_number, ctx);
+    round::create_round(iter_cap, round_registry, current_round_number, ctx);
 }
 
 /// Claims all protocol fee reserves.
@@ -282,8 +281,7 @@ public fun purchase_ticket<T>(
 
 /// Draws a winner using a random ticket number.
 entry fun draw<T>(
-    _self: &PrizePoolCap,
-    phase_info_cap: &PhaseInfoCap,
+    iter_cap: &IteratorCap,
     prize_pool: &PrizePool,
     phase_info: &mut PhaseInfo,
     pool_registry: &PoolRegistry,
@@ -306,18 +304,15 @@ entry fun draw<T>(
 
     // Store the winner in the current round
     round.record_drawing_result(clock, winner_player, prize_reserves_value);
-    phase_info_cap.set_last_drawing_timestamp_ms(phase_info, clock);
+    phase::set_last_drawing_timestamp_ms(iter_cap, phase_info, clock);
 
     // Instantly move to the Distributing phase
-    phase_info_cap.next(phase_info, clock, ctx);
+    phase::next(iter_cap, phase_info, clock, ctx);
 }
 
 /// Distributes prizes to a lounge and fees to pools.
 public fun distribute<T>(
-    _self: &PrizePoolCap,
-    pool_cap: &PoolCap,
-    lounge_cap: &LoungeCap,
-    phase_info_cap: &PhaseInfoCap,
+    iter_cap: &IteratorCap,
     phase_info: &mut PhaseInfo,
     prize_pool: &mut PrizePool,
     pool_registry: &mut PoolRegistry,
@@ -333,14 +328,15 @@ public fun distribute<T>(
 
     if (round.get_winner().is_some()) {
         let winner = round.get_winner().extract();
-        let prize_coin = prize_pool.inner_aggregate_prize_to_lounge<T>(
+        let prize_coin = inner_aggregate_prize_to_lounge<T>(
+            iter_cap,
             phase_info,
-            pool_cap,
             pool_registry,
             ctx,
         );
 
-        lounge_cap.create_lounge<T>(
+        lounge::create_lounge<T>(
+            iter_cap,
             lounge_registry,
             round.get_round_number(),
             winner,
@@ -353,15 +349,14 @@ public fun distribute<T>(
     inner_distribute_fee_to_pools<T>(pool_registry, fee_reserves, ctx);
 
     // Instantly move to the Settling phase
-    phase_info_cap.next(phase_info, clock, ctx);
+    phase::next(iter_cap, phase_info, clock, ctx);
 }
 
 /// Internal functions
 
 fun inner_aggregate_prize_to_lounge<T>(
-    _self: &PrizePool,
+    iter_cap: &IteratorCap,
     phase_info: &PhaseInfo,
-    pool_cap: &PoolCap,
     pool_registry: &mut PoolRegistry,
     ctx: &mut TxContext,
 ): Coin<T> {
@@ -372,7 +367,8 @@ fun inner_aggregate_prize_to_lounge<T>(
     let mut total_balance = balance::zero<T>();
     while (i < risk_ratios_len) {
         let risk_ratio_bps = risk_ratios[i];
-        let prize_coin = pool_cap.withdraw_prize<T>(
+        let prize_coin = pool::withdraw_prize<T>(
+            iter_cap,
             pool_registry,
             risk_ratio_bps,
             phase_info,
@@ -393,21 +389,23 @@ fun inner_distribute_fee_to_pools<T>(
 ) {
     let reserves_value = reserves.value();
 
-    let total_risk_ratio_bps = pool_registry.get_total_risk_ratio_bps();
+    let total_risk_ratio_bps = pool_registry.get_nonzero_shares_total_risk_ratio_bps<T>();
     let risk_ratios = pool_registry.get_pool_risk_ratios();
     let risk_ratios_len = risk_ratios.length();
 
     let mut i = 0;
     while (i < risk_ratios_len) {
         let risk_ratio_bps = risk_ratios[i];
-        let fee_for_pool = inner_cal_fee_for_risk_ratio(
-            risk_ratio_bps,
-            reserves_value,
-            total_risk_ratio_bps,
-        );
-        let fee_coin = from_balance(reserves.split(fee_for_pool), ctx);
         let pool = pool_registry.get_pool_by_risk_ratio_mut<T>(risk_ratio_bps);
-        pool.deposit_fee(fee_coin);
+        if (pool.get_total_shares() > 0) {
+            let fee_for_pool = inner_cal_fee_for_risk_ratio(
+                risk_ratio_bps,
+                reserves_value,
+                total_risk_ratio_bps,
+            );
+            let fee_coin = from_balance(reserves.split(fee_for_pool), ctx);
+            pool.deposit_fee(fee_coin);
+        };
         i = i + 1;
     };
 }

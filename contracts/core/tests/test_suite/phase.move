@@ -1,7 +1,7 @@
 #[test_only]
 module anglerfish::phase_test_suite;
 
-use anglerfish::base_test_suite::build_base_test_suite;
+use anglerfish::iterator_test_suite::build_iterator_test_suite;
 use anglerfish::phase::{PhaseInfo, PhaseInfoCap};
 use sui::clock::Clock;
 use sui::test_scenario::Scenario;
@@ -11,7 +11,7 @@ const PHASE_DURATION: u64 = 60;
 /// build_phase_test_suite
 /// Initializes phase info for the test suite with the given authority.
 public fun build_phase_test_suite(authority: address): (Scenario, Clock, PhaseInfo) {
-    let (mut scenario, clock) = build_base_test_suite(authority);
+    let (mut scenario, clock) = build_iterator_test_suite(authority);
 
     scenario.next_tx(authority);
 
