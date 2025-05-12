@@ -24,7 +24,7 @@ fun init(witness: USDC, ctx: &mut TxContext) {
     );
 
     transfer::public_freeze_object(metadata);
-    transfer::public_transfer(treasury, ctx.sender());
+    transfer::public_share_object(treasury);
 }
 
 public fun mint(
