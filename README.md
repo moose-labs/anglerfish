@@ -71,12 +71,14 @@ We welcome contributions to the Anglerfish project! If you're interested in cont
 
 ## License
 
-[Specify the project's license here, e.g., Apache 2.0]
+This project is licensed under a custom license.  
+**Usage Restrictions:**
 
-## Disclaimer
+- You are free to read and study the code.
+- Commercial usage or use in competitive projects is **strictly prohibited** without prior written permission from the project owner.
 
-Anglerfish is under active development and is provided "as is" without any warranties. Use it at your own risk. Engaging with DeFi protocols involves inherent risks, including but not limited to smart contract risks, market volatility, and potential loss of funds.
+For more details, please see the [LICENSE.md](./LICENSE.md) file.
 
 ## Contact
 
-[Provide contact information or links to community channels, e.g., Discord, Telegram]
+For any inquiries, please contact Telegram: @pawsengineer.
